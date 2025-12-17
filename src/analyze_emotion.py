@@ -4,20 +4,20 @@ import csv
 import json
 from datetime import datetime
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import Tuple, Optional
 import traceback
 
-
 from deepface import DeepFace
-
 
 # =====================================================================
 # CONFIG
 # =====================================================================
-USE_DEEPFACE = False        # DeepFace backend
-USE_HSEMOTION = True      # HSEmotion backend (mets True pour l'activer)
 
-DEEPFACECONFIDENCE_THRESHOLD = 0.7  # Seuil DeepFace (0..100 en général)
+# Fallback: si HSEmotion < 0.65 => on tente DeepFace
+HSEMOTION_CONFIDENCE_THRESHOLD = 0.65
+
+# Seuil DeepFace (normalisé ensuite en 0..1)
+DEEPFACE_CONFIDENCE_THRESHOLD = 0.7
 
 # =====================================================================
 # UTIL
@@ -29,7 +29,7 @@ def parse_frame_index(filename: str) -> int:
     (chez toi: frame_00012face000.jpg marche aussi)
     """
     try:
-        base = filename.split("face")[0]  # ex: "frame_00012"
+        base = filename.split("face")[0]  # ex: "frame_00012_"
         num_str = base.replace("frame_", "").replace("_", "")
         return int(num_str)
     except Exception:
@@ -57,6 +57,7 @@ def save_master_json(master: dict, master_json_path: str):
 class DeepFaceEmotionDetector:
     """
     Utilise DeepFace pour prédire l'émotion dominante d'un visage recadré.
+    Retourne (emotion, confidence) où confidence est normalisée en 0..1.
     """
 
     def __init__(self):
@@ -64,10 +65,6 @@ class DeepFaceEmotionDetector:
         print("[DeepFaceEmotionDetector] Modèle DeepFace prêt pour l'analyse d'émotions.")
 
     def analyze(self, img: np.ndarray) -> Tuple[Optional[str], float]:
-        """
-        Retourne (emotion_dominante, confiance).
-        confidence: en général DeepFace renvoie des scores 0..100 pour les émotions.
-        """
         if img is None or img.size == 0:
             return None, 0.0
 
@@ -82,16 +79,18 @@ class DeepFaceEmotionDetector:
                 silent=True
             )
 
-            # dict ou list[dict]
             res0 = pred[0] if isinstance(pred, list) and pred else pred
             if not isinstance(res0, dict):
                 return None, 0.0
 
-            dominant_emotion = res0.get('dominant_emotion', None)
-            emotion_scores = res0.get('emotion', {}) or {}
+            dominant = res0.get('dominant_emotion', None)
+            scores = res0.get('emotion', {}) or {}
 
-            score = float(emotion_scores.get(dominant_emotion, 0.0)) if dominant_emotion else 0.0
-            return dominant_emotion, score
+            raw = float(scores.get(dominant, 0.0)) if dominant else 0.0
+
+            # DeepFace renvoie souvent 0..100 => normalisation 0..1
+            conf = raw / 100.0 if raw > 1.5 else raw
+            return dominant, conf
 
         except Exception as e:
             print(f"[DeepFaceEmotionDetector] Erreur lors de l'analyse DeepFace: {e}")
@@ -104,8 +103,9 @@ class DeepFaceEmotionDetector:
 class HSEmotionDetector:
     """
     Wrapper HSEmotion.
-    Retourne (emotion_dominante, confiance).
+    Retourne (emotion, confidence) où confidence est normalement en 0..1.
     """
+
     def __init__(self, device: str = "cpu"):
         self._printed_error = False
         print("[HSEmotionDetector] Chargement du modèle HSEmotion...")
@@ -116,10 +116,12 @@ class HSEmotionDetector:
     def analyze(self, img: np.ndarray) -> Tuple[Optional[str], float]:
         if img is None or img.size == 0:
             return None, 0.0
+
         try:
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             emotion, scores = self.model.predict_emotions(img_rgb, logits=False)
 
+            # scores est typiquement une liste/np.array de proba (0..1)
             conf = float(np.max(scores)) if scores is not None else 0.0
             return emotion, conf
 
@@ -129,17 +131,6 @@ class HSEmotionDetector:
                 print("[HSEmotionDetector] ERREUR RÉELLE (une seule fois) :")
                 traceback.print_exc()
             return None, 0.0
-
-# =====================================================================
-# SELECTOR
-# =====================================================================
-def build_emotion_detector():
-    if USE_HSEMOTION:
-        return HSEmotionDetector(device="cpu")
-    if USE_DEEPFACE:
-        return DeepFaceEmotionDetector()
-    # fallback
-    return DeepFaceEmotionDetector()
 
 
 # =====================================================================
@@ -162,7 +153,9 @@ def analyze_emotions_incremental(faces_root: str,
 
     master_results = load_master_json(master_json_path)
 
-    emotion_detector = build_emotion_detector()
+    # IMPORTANT: on crée les deux détecteurs (HSEmotion + DeepFace)
+    hse_detector = HSEmotionDetector(device="cpu")
+    deepface_detector = DeepFaceEmotionDetector()
 
     per_dir_rows = {}
     per_dir_json = {}
@@ -176,6 +169,7 @@ def analyze_emotions_incremental(faces_root: str,
 
             rel_path = filename if rel_dir == "." else os.path.join(rel_dir, filename)
 
+            # Déjà analysé ? -> on saute
             if rel_path in master_results:
                 continue
 
@@ -189,30 +183,34 @@ def analyze_emotions_incremental(faces_root: str,
                 print(f"Erreur: impossible de lire {image_path}")
                 continue
 
-            topEmotion, score = emotion_detector.analyze(image)
+            # ============================================================
+            # 1) Essai HSEmotion
+            # 2) Si confidence < 0.7 => fallback DeepFace
+            # ============================================================
+            topEmotion, score = hse_detector.analyze(image)
+            backend_used = "hsemotion"
 
-            # (Optionnel) appliquer un seuil pour marquer "uncertain"
-            # DeepFace score souvent en 0..100. HSEmotion peut être 0..1.
-            # On normalise grossièrement: si score > 1.5 on suppose 0..100
-            score_norm = score / 100.0 if score > 1.5 else score
+            if topEmotion is None or score < HSEMOTION_CONFIDENCE_THRESHOLD:
+                df_emotion, df_conf = deepface_detector.analyze(image)
 
-            if topEmotion is None:
-                topEmotion = None
-                score_norm = 0.0
-
-            # si DeepFace et seuil activé
-            if USE_DEEPFACE and not USE_HSEMOTION:
-                if score < (DEEPFACECONFIDENCE_THRESHOLD * 100.0):  # seuil 0.7 -> 70
-                    # tu peux choisir de mettre "uncertain" au lieu de None
-                    pass
+                if df_emotion is not None and df_conf >= DEEPFACE_CONFIDENCE_THRESHOLD:
+                    topEmotion = df_emotion
+                    score = df_conf
+                    backend_used = "deepface"
+                else:
+                    # si même DeepFace n'est pas convaincant => incertain
+                    if topEmotion is None:
+                        topEmotion = None
+                        score = 0.0
+                        backend_used = "hsemotion"
 
             entry = {
                 "relative_path": rel_path,
                 "filename": filename,
                 "frame_index": frame_index,
                 "top_emotion": topEmotion,
-                "confidence_score": float(score_norm),
-                "backend": "hsemotion" if USE_HSEMOTION else "deepface"
+                "confidence_score": float(score),  # déjà normalisé en 0..1
+                "backend": backend_used
             }
 
             if rel_dir not in per_dir_rows:
@@ -242,6 +240,8 @@ def analyze_emotions_incremental(faces_root: str,
 
         with open(csv_path, mode='w', newline='', encoding='utf-8') as csvfile:
             csvfile.write(f"# Emotions analysis run at {timestamp}\n")
+            csvfile.write(f"# HSEmotion threshold: {HSEMOTION_CONFIDENCE_THRESHOLD}\n")
+            csvfile.write(f"# DeepFace threshold: {DEEPFACE_CONFIDENCE_THRESHOLD}\n")
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for row in rows:
@@ -259,12 +259,6 @@ def analyze_emotions_incremental(faces_root: str,
 
 
 if __name__ == "__main__":
-    # test_path = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces\\ytb2\\frames_17-12-2025_12-37-14\\frame_00001_face_000.jpg"
-    # img = cv2.imread(test_path)
-    # det = HSEmotionDetector(device="cpu")
-    # print("TEST:", det.analyze(img))
-    # exit()
-
     faces_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces"
     output_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\emotions"
     master_json_path = os.path.join(output_root, "emotions_master.json")
