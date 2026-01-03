@@ -1,280 +1,171 @@
 import os
 import cv2
 import mediapipe as mp
+import numpy as np
+from typing import List, Tuple
 
-def is_overlapping(boxA, boxB, overlap_threshold=0.3):
+# Suppress TensorFlow logging
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+# =============================================================================
+# CONFIG
+# =============================================================================
+
+OVERLAP_THRESHOLD = 0.3
+TRACK_MAX_MISSING = 60          # très important pour 1 FPS
+CENTER_DIST_MAX = 220           # px
+BLUR_MIN = 40.0                 # seuil flou
+HIST_MAX_DIST = 0.35            # Bhattacharyya (plus petit = plus strict)
+
+USE_APPEARANCE = True
+
+# =============================================================================
+# UTILS
+# =============================================================================
+
+def blur_score(img: np.ndarray) -> float:
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def compute_face_hist(face_bgr: np.ndarray) -> np.ndarray:
     """
-    Check if two bounding boxes overlap based on Intersection over Union (IoU).
-    boxA, boxB = (x, y, w, h)
+    Histogramme HSV sur le HAUT du visage (anti-expression).
     """
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
-    yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+    h = face_bgr.shape[0]
+    face = face_bgr[: int(h * 0.60), :]  # haut du visage
 
-    interWidth = max(0, xB - xA)
-    interHeight = max(0, yB - yA)
-    interArea = interWidth * interHeight
+    face = cv2.resize(face, (64, 64))
+    hsv = cv2.cvtColor(face, cv2.COLOR_BGR2HSV)
 
-    boxAArea = boxA[2] * boxA[3]
-    boxBArea = boxB[2] * boxB[3]
-
-    if (boxAArea + boxBArea - interArea) == 0:
-        return False
-
-    iou = interArea / float(boxAArea + boxBArea - interArea)
-    return iou > overlap_threshold
+    hist = cv2.calcHist([hsv], [0, 1], None, [32, 32], [0, 180, 0, 256])
+    cv2.normalize(hist, hist)
+    return hist
 
 
-def remove_overlapping_boxes(boxes, overlap_threshold=0.3):
-    """
-    Remove overlapping bounding boxes based on IoU.
-    boxes = [(x, y, w, h), ...]
-    """
-    if len(boxes) == 0:
-        return []
-
-    boxes = sorted(boxes, key=lambda b: b[0])  # sort by x
-    non_overlapping_boxes = []
-
-    while boxes:
-        current_box = boxes.pop(0)
-        non_overlapping_boxes.append(current_box)
-        boxes = [box for box in boxes if not is_overlapping(current_box, box, overlap_threshold)]
-
-    return non_overlapping_boxes
-def detect_faces_mediapipe(image, face_detection, overlap_threshold=0.3):
-    """
-    Utilise MediaPipe pour détecter les visages dans une image BGR (OpenCV).
-    Retourne une liste de bounding boxes en pixels : [(x, y, w, h), ...]
-    """
-    h_img, w_img = image.shape[:2]
-
-    # MediaPipe travaille en RGB
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = face_detection.process(image_rgb)
-
-    boxes = []
-    if results.detections:
-        for det in results.detections:
-            rel_box = det.location_data.relative_bounding_box
-            # Coordonnées relatives (0–1) -> pixels
-            x_min = int(rel_box.xmin * w_img)
-            y_min = int(rel_box.ymin * h_img)
-            w = int(rel_box.width * w_img)
-            h = int(rel_box.height * h_img)
-
-            # On s’assure que la box reste dans l’image
-            x_min = max(0, x_min)
-            y_min = max(0, y_min)
-            if x_min + w > w_img:
-                w = w_img - x_min
-            if y_min + h > h_img:
-                h = h_img - y_min
-
-            if w <= 0 or h <= 0:
-                continue
-
-            boxes.append((x_min, y_min, w, h))
-
-    # Filtrer les overlaps comme avant
-    boxes = remove_overlapping_boxes(boxes, overlap_threshold=overlap_threshold)
-    return boxes
-
-def _clip(v, vmin, vmax):
-    return max(vmin, min(v, vmax))
-
-def crop_with_margin(image, x, y, w, h, margin_ratio=0.25):
-    """
-    Retourne (crop, (x0, y0)) où (x0,y0) est l'offset du crop dans l'image originale.
-    margin_ratio=0.25 => +25% de marge autour de la bbox.
-    """
-    H, W = image.shape[:2]
-    m = int(max(w, h) * margin_ratio)
-
-    x0 = _clip(x - m, 0, W - 1)
-    y0 = _clip(y - m, 0, H - 1)
-    x1 = _clip(x + w + m, 0, W)
-    y1 = _clip(y + h + m, 0, H)
-
-    if x1 <= x0 or y1 <= y0:
-        return None, (0, 0)
-
-    return image[y0:y1, x0:x1], (x0, y0)
-
-def refine_bbox_with_facemesh(image, bbox, face_mesh, outer_margin=0.25, inner_margin=0.10):
-    """
-    Tente d'améliorer bbox=(x,y,w,h) avec FaceMesh.
-    - outer_margin : marge pour créer le crop large (où FaceMesh travaille)
-    - inner_margin : marge ajoutée au rectangle issu des landmarks
-    Retourne une bbox raffinée (x,y,w,h) ou None si FaceMesh échoue.
-    """
-    x, y, w, h = bbox
-    H, W = image.shape[:2]
-
-    crop_large, (ox, oy) = crop_with_margin(image, x, y, w, h, margin_ratio=outer_margin)
-    if crop_large is None:
-        return None
-
-    # FaceMesh attend du RGB
-    crop_rgb = cv2.cvtColor(crop_large, cv2.COLOR_BGR2RGB)
-    res = face_mesh.process(crop_rgb)
-
-    if not res.multi_face_landmarks:
-        return None
-
-    # On prend le premier visage (max_num_faces=1 de préférence)
-    lm = res.multi_face_landmarks[0].landmark
-    ch, cw = crop_large.shape[:2]
-
-    xs = [p.x * cw for p in lm]
-    ys = [p.y * ch for p in lm]
-
-    x_min = int(min(xs))
-    x_max = int(max(xs))
-    y_min = int(min(ys))
-    y_max = int(max(ys))
-
-    # Ajoute une marge autour des landmarks
-    mw = int((x_max - x_min) * inner_margin)
-    mh = int((y_max - y_min) * inner_margin)
-
-    x_min = _clip(x_min - mw, 0, cw - 1)
-    y_min = _clip(y_min - mh, 0, ch - 1)
-    x_max = _clip(x_max + mw, 0, cw)
-    y_max = _clip(y_max + mh, 0, ch)
-
-    rw = x_max - x_min
-    rh = y_max - y_min
-    if rw <= 0 or rh <= 0:
-        return None
-
-    # Convertit en coords image originale
-    rx = ox + x_min
-    ry = oy + y_min
-
-    # Clip final
-    rx = _clip(rx, 0, W - 1)
-    ry = _clip(ry, 0, H - 1)
-    rw = _clip(rw, 1, W - rx)
-    rh = _clip(rh, 1, H - ry)
-
-    return (rx, ry, rw, rh)
+def hist_distance(h1, h2) -> float:
+    return cv2.compareHist(h1, h2, cv2.HISTCMP_BHATTACHARYYA)
 
 
-def detect_faces_in_all_frames(
-    extracted_frames_root,
-    detected_faces_root,
-    overlap_threshold=0.3,
-    model_selection=1,
-    min_detection_confidence=0.5,
-):
-    """
-    Parcourt tous les fichiers images dans extracted_frames_root,
-    détecte les visages (MediaPipe) uniquement pour les images PAS encore traitées,
-    et sauvegarde les faces dans detected_faces_root en gardant la même structure.
+def center_of(box):
+    x, y, w, h = box
+    return (x + w / 2, y + h / 2)
 
-    - extracted_frames_root : dossier racine des frames extraites
-    - detected_faces_root   : dossier racine où stocker les visages
-    """
 
-    # mp_face = mp.solutions.face_detection
+def center_distance(a, b) -> float:
+    ax, ay = a
+    bx, by = b
+    return np.hypot(ax - bx, ay - by)
 
-    # # On crée une fois l’objet FaceDetection et on le réutilise
-    # with mp_face.FaceDetection(
-    #     model_selection=model_selection,
-    #     min_detection_confidence=min_detection_confidence,
-    # ) as face_detection:
+# =============================================================================
+# TRACK CLASS
+# =============================================================================
+
+class Track:
+    def __init__(self, track_id, bbox, hist):
+        self.id = track_id
+        self.bbox = bbox
+        self.hist = hist
+        self.missing = 0
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+def detect_faces_in_all_frames(extracted_frames_root, detected_faces_root):
+
     mp_face = mp.solutions.face_detection
-    mp_mesh = mp.solutions.face_mesh
+
+    tracks: List[Track] = []
+    next_track_id = 0
 
     with mp_face.FaceDetection(
-        model_selection=model_selection,
-        min_detection_confidence=min_detection_confidence,
-    ) as face_detection, mp_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=True,
+        model_selection=1,
         min_detection_confidence=0.5,
-    ) as face_mesh:
+    ) as face_detection:
 
-        # Parcourt récursivement extracted_frames_root
-        for dirpath, dirnames, filenames in os.walk(extracted_frames_root):
-            # Chemin relatif par rapport à la racine
+        for dirpath, _, filenames in os.walk(extracted_frames_root):
             rel_path = os.path.relpath(dirpath, extracted_frames_root)
+            out_base = os.path.join(detected_faces_root, rel_path)
+            os.makedirs(out_base, exist_ok=True)
 
-            # Dossier de sortie correspondant (même structure)
-            output_folder = os.path.join(detected_faces_root, rel_path)
-            os.makedirs(output_folder, exist_ok=True)
-
-            for filename in filenames:
-                if not filename.lower().endswith(
-                    ('.png', '.jpg', '.jpeg', '.bmp', '.tiff')
-                ):
+            for filename in sorted(filenames):
+                if not filename.lower().endswith((".jpg", ".png", ".jpeg")):
                     continue
 
-                base_name, _ = os.path.splitext(filename)
-
-                # Vérifier si cette image a déjà été traitée
-                already_done = False
-                if os.path.exists(output_folder):
-                    for f in os.listdir(output_folder):
-                        if f.startswith(base_name + "face"):
-                            already_done = True
-                            break
-
-                if already_done:
-                    print(f"[SKIP] {os.path.join(rel_path, filename)} déjà traitée.")
-                    continue
-
-                # Charger l'image
                 img_path = os.path.join(dirpath, filename)
                 image = cv2.imread(img_path)
                 if image is None:
-                    print(f"Error: Could not read image {img_path}")
                     continue
 
-                # Détection des visages avec MediaPipe
-                faces = detect_faces_mediapipe(
-                    image,
-                    face_detection=face_detection,
-                    overlap_threshold=overlap_threshold,
-                )
+                h_img, w_img = image.shape[:2]
+                rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                res = face_detection.process(rgb)
 
-                if len(faces) == 0:
-                    print(f"No faces detected in {os.path.join(rel_path, filename)}")
-                    continue
+                detections = []
+                if res.detections:
+                    for det in res.detections:
+                        rb = det.location_data.relative_bounding_box
+                        x = int(rb.xmin * w_img)
+                        y = int(rb.ymin * h_img)
+                        w = int(rb.width * w_img)
+                        h = int(rb.height * h_img)
+                        x, y = max(0, x), max(0, y)
+                        w = min(w, w_img - x)
+                        h = min(h, h_img - y)
+                        detections.append((x, y, w, h))
 
-                # Sauvegarder chaque visage comme avant
-                # for i, (x, y, w, h) in enumerate(faces):
-                #     face_img = image[y:y + h, x:x + w]
-                #     face_filename = os.path.join(
-                #         output_folder,
-                #         f"{base_name}face{i:03d}.jpg"
-                #     )
-                #     cv2.imwrite(face_filename, face_img)
-                
-                for i, (x, y, w, h) in enumerate(faces):
-                    refined = refine_bbox_with_facemesh(image, (x, y, w, h), face_mesh)
+                used_tracks = set()
 
-                    # FaceMesh OK => bbox raffinée, sinon fallback bbox d'origine
-                    if refined is not None:
-                        x2, y2, w2, h2 = refined
+                for (x, y, w, h) in detections:
+                    crop = image[y:y+h, x:x+w]
+                    blur = blur_score(crop)
+
+                    hist = compute_face_hist(crop) if USE_APPEARANCE and blur >= BLUR_MIN else None
+                    best = None
+                    best_score = float("inf")
+
+                    for t in tracks:
+                        dist = center_distance(center_of(t.bbox), center_of((x, y, w, h)))
+                        if dist > CENTER_DIST_MAX:
+                            continue
+
+                        score = dist
+                        if hist is not None and t.hist is not None:
+                            score += 100 * hist_distance(hist, t.hist)
+
+                        if score < best_score:
+                            best_score = score
+                            best = t
+
+                    if best:
+                        best.bbox = (x, y, w, h)
+                        best.missing = 0
+                        if hist is not None:
+                            best.hist = hist
+                        track_id = best.id
                     else:
-                        x2, y2, w2, h2 = (x, y, w, h)
+                        track_id = next_track_id
+                        tracks.append(Track(track_id, (x, y, w, h), hist))
+                        next_track_id += 1
 
-                    face_img = image[y2:y2 + h2, x2:x2 + w2]
-                    face_filename = os.path.join(output_folder, f"{base_name}face{i:03d}.jpg")
-                    cv2.imwrite(face_filename, face_img)
+                    person_dir = os.path.join(out_base, f"person_{track_id:04d}")
+                    os.makedirs(person_dir, exist_ok=True)
 
+                    out_name = filename.replace(".jpg", f"track{track_id:03d}.jpg")
+                    cv2.imwrite(os.path.join(person_dir, out_name), crop)
 
-                print(
-                    f"[OK] {len(faces)} faces saved for "
-                    f"{os.path.join(rel_path, filename)} in {output_folder}"
-                )
+                    used_tracks.add(track_id)
+
+                for t in tracks:
+                    if t.id not in used_tracks:
+                        t.missing += 1
+
+                tracks = [t for t in tracks if t.missing <= TRACK_MAX_MISSING]
+
 
 if __name__ == "__main__":
-    extracted_frames_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\extracted_frames"
-    detected_faces_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces"
-
-    detect_faces_in_all_frames(extracted_frames_root, detected_faces_root)
+    detect_faces_in_all_frames(
+        "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\extracted_frames",
+        "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces",
+    )
