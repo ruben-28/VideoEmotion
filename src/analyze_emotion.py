@@ -828,9 +828,9 @@ def analyze_emotions_incremental(
         run_folder = os.path.join(output_root, base_dir, timestamp)
         os.makedirs(run_folder, exist_ok=True)
 
-        csv_path = os.path.join(run_folder, "emotions.csv")
-        json_path = os.path.join(run_folder, "emotions.json")
-        final_json_path = os.path.join(run_folder, "emotions_final.json")
+        csv_path = os.path.join(run_folder, "analyzed_emotions.csv")
+        json_path = os.path.join(run_folder, "analyzed_emotions.json")
+        final_json_path = os.path.join(run_folder, "analyzed_emotions_final.json")
 
         with open(csv_path, mode="w", newline="", encoding="utf-8") as csvfile:
             csvfile.write(f"# Emotions analysis run at {timestamp}\n")
@@ -882,7 +882,7 @@ def analyze_emotions_incremental(
 
 if __name__ == "__main__":
     faces_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces"
-    output_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\emotions"
-    master_json_path = os.path.join(output_root, "emotions_master.json")
+    output_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\emotion_results"
+    master_json_path = os.path.join(output_root, "emotion_results_master.json")
 
     analyze_emotions_incremental(faces_root, output_root, master_json_path)
