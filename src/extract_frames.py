@@ -2,14 +2,15 @@ import cv2
 import os
 from datetime import datetime
 
-def extract_frames(video_path, output_folder, frame_rate=1):
+def extract_frames(video_path, output_folder, frame_rate=5):
     """
     Extract frames from a video into a timestamped folder inside output_folder.
+    Uses real-time sampling (milliseconds) and saves time in filename (Option A).
+    Example filename: frame_00023_t00012340.jpg  (12.340s)
     """
 
     timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
     output_folder = os.path.join(output_folder, f"frames_{timestamp}")
-
     os.makedirs(output_folder, exist_ok=True)
 
     cap = cv2.VideoCapture(video_path)
@@ -17,9 +18,9 @@ def extract_frames(video_path, output_folder, frame_rate=1):
         print(f"Error: Could not open video {video_path}")
         return False
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_interval = max(int(fps / frame_rate), 1)
-    frame_count = 0
+    interval_ms = 1000.0 / frame_rate  # 5 FPS -> 200 ms
+    next_capture_time = 0.0
+
     saved_frame_count = 0
 
     while True:
@@ -27,19 +28,26 @@ def extract_frames(video_path, output_folder, frame_rate=1):
         if not ret:
             break
 
-        if frame_count % frame_interval == 0:
-            frame_filename = os.path.join(output_folder, f"frame_{saved_frame_count:05d}.jpg")
+        current_time_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+
+        if current_time_ms >= next_capture_time:
+            current_time_ms_int = int(current_time_ms)
+
+            frame_filename = os.path.join(
+                output_folder,
+                f"frame_{saved_frame_count:05d}_t{current_time_ms_int:08d}.jpg"
+            )
+
             cv2.imwrite(frame_filename, frame)
             saved_frame_count += 1
-
-        frame_count += 1
+            next_capture_time += interval_ms
 
     cap.release()
     print(f"Extracted {saved_frame_count} frames to {output_folder}")
     return True
 
 
-def extract_all_new_videos(videos_dir, extracted_root, frame_rate=1):
+def extract_all_new_videos(videos_dir, extracted_root, frame_rate=5):
     """
     Parcourt tous les fichiers vidéo dans videos_dir.
     Pour chaque vidéo non encore traitée, crée un dossier et extrait les frames.
@@ -65,7 +73,7 @@ def extract_all_new_videos(videos_dir, extracted_root, frame_rate=1):
         # Créer dossier de la vidéo
         os.makedirs(video_output_dir, exist_ok=True)
 
-        print(f"[PROCESS] Extraction des frames de '{filename}'...")
+        print(f"[PROCESS] Extraction des frames de '{filename}' à {frame_rate} FPS...")
         extract_frames(video_path, video_output_dir, frame_rate=frame_rate)
 
 
@@ -73,4 +81,4 @@ if __name__ == "__main__":
     videos_dir = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\videos"
     extracted_root = "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\extracted_frames"
 
-    extract_all_new_videos(videos_dir, extracted_root, frame_rate=1)
+    extract_all_new_videos(videos_dir, extracted_root, frame_rate=5)

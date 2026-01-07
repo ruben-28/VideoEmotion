@@ -7,11 +7,10 @@ import traceback
 import numpy as np
 from dataclasses import dataclass
 from datetime import datetime
-from collections import deque, Counter
+from collections import Counter
 from typing import Dict, List, Optional, Tuple
 
 from deepface import DeepFace
-
 
 # =============================================================================
 # CONFIG
@@ -21,12 +20,12 @@ from deepface import DeepFace
 MIN_FACE_SIZE = 60  # px : ignore les faces trop petites (souvent bruitées)
 
 # --- 2) Face quality metrics thresholds (utilisés pour flag "bad_quality") ---
-BLUR_MIN_VAR_LAPLACIAN = 40.0   # < ~40 => souvent flou (à ajuster)
+BLUR_MIN_VAR_LAPLACIAN = 60.0   # < ~40 => souvent flou (à ajuster)
 BRIGHTNESS_MIN = 35.0           # trop sombre
 BRIGHTNESS_MAX = 220.0          # trop surexposé
 
 # --- 3) DeepFace detector backend (meilleure robustesse que "skip") ---
-DEEPFACE_DETECTOR_BACKEND = "retinaface"  # alternatives: "mediapipe", "opencv"
+DEEPFACE_DETECTOR_BACKEND = "skip"  # alternatives: "mediapipe", "opencv", "retinaface"
 DEEPFACE_ENFORCE_DETECTION = True         # True => DeepFace refuse si pas de visage
 
 # --- 4) TTA (Test-Time Augmentation) ---
@@ -35,9 +34,15 @@ TTA_ROT_DEG = 5
 TTA_BRIGHT_FACTOR = 0.10  # +/- 10%
 TTA_MAX_VARIANTS = 5      # garde petit (perf)
 
-# --- 5) Temporal smoothing (sur les frames d'une même séquence) ---
+# --- 5) Temporal smoothing centré (n-1, n, n+1) ---
 ENABLE_SMOOTHING = True
-SMOOTHING_WINDOW = 9  # vote majoritaire sur N dernières frames
+CENTERED_SMOOTH_WINDOW = 3  # IMPORTANT: doit être impair (3 => n-1,n,n+1)
+
+# Score de smoothing (nouveau)
+ENABLE_SMOOTHING_SCORE = True
+# Si True: calcule le score par vote sur fenêtre des "final_emotion"
+# (plus cohérent avec ton output final)
+SMOOTH_SCORE_USE_FINAL = True
 
 # On calcule TOUJOURS HSEmotion. DeepFace: soit toujours, soit fallback.
 RUN_DEEPFACE_ALWAYS = False  # si False: DeepFace seulement si HSEmotion faible.
@@ -52,7 +57,7 @@ UNCERTAIN_MIN_CONF = 0.55  # si les deux < ceci => incertain
 
 
 # =============================================================================
-# UTIL
+# UTIL PARSING
 # =============================================================================
 
 def parse_frame_index(filename: str) -> int:
@@ -125,6 +130,10 @@ def identity_id(face_id: int, track_id: int) -> int:
     return track_id if track_id != -1 else face_id
 
 
+# =============================================================================
+# MASTER JSON
+# =============================================================================
+
 def load_master_json(master_json_path: str) -> dict:
     if os.path.exists(master_json_path):
         with open(master_json_path, "r", encoding="utf-8") as f:
@@ -138,9 +147,13 @@ def save_master_json(master: dict, master_json_path: str):
         json.dump(master, f, indent=4, ensure_ascii=False)
 
 
+# =============================================================================
+# QUALITY METRICS
+# =============================================================================
+
 def face_quality_metrics(face_bgr: np.ndarray) -> Dict[str, float]:
     """
-    2) Qualité de crop : blur/brightness/contrast/area
+    Qualité de crop : blur/brightness/contrast/area
     """
     if face_bgr is None or face_bgr.size == 0:
         return {"blur": 0.0, "brightness": 0.0, "contrast": 0.0, "area": 0.0}
@@ -171,9 +184,13 @@ def is_bad_quality(q: Dict[str, float]) -> bool:
     return False
 
 
+# =============================================================================
+# TTA
+# =============================================================================
+
 def tta_variants(face_bgr: np.ndarray) -> List[np.ndarray]:
     """
-    4) TTA léger : original, flip, +/- luminosité, micro-rotation
+    TTA léger : original, flip, +/- luminosité, micro-rotation
     """
     variants = [face_bgr]
     if face_bgr is None or face_bgr.size == 0:
@@ -202,35 +219,188 @@ def tta_variants(face_bgr: np.ndarray) -> List[np.ndarray]:
     return variants[:TTA_MAX_VARIANTS]
 
 
-class EmotionSmoother:
+# =============================================================================
+# CENTERED SMOOTHING (n-1, n, n+1) + SMOOTHING SCORE
+# =============================================================================
+
+def centered_mode(values: List[Optional[str]]) -> Optional[str]:
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return None
+    return Counter(vals).most_common(1)[0][0]
+
+
+def _safe_float(x, default=0.0) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return default
+
+
+def compute_smoothing_score(
+    emotions_window: List[Optional[str]],
+    confidences_window: List[float],
+) -> Tuple[Optional[str], float, float, float]:
     """
-    5) Smoothing simple par vote majoritaire sur une fenêtre.
+    Retourne:
+      - smoothed_emotion (vote)
+      - smoothing_score = vote_ratio * avg_conf (0..1)
+      - vote_ratio
+      - avg_conf_window
     """
-    def __init__(self, window: int = 9):
-        self.buf = deque(maxlen=window)
+    emo = [e for e in emotions_window if isinstance(e, str) and e.strip()]
+    if not emo:
+        return None, 0.0, 0.0, 0.0
 
-    def seed(self, emotions: List[Optional[str]]):
-        for e in emotions:
-            if e is not None:
-                self.buf.append(e)
+    counts = Counter(emo)
+    smoothed_emotion, top_count = counts.most_common(1)[0]
+    total = len(emo)
+    vote_ratio = (top_count / total) if total else 0.0
 
-    def update(self, emotion: Optional[str]):
-        if emotion is not None:
-            self.buf.append(emotion)
+    confs = [max(0.0, min(1.0, _safe_float(c, 0.0))) for c in confidences_window]
+    avg_conf = (sum(confs) / len(confs)) if confs else 0.0
 
-    def get(self) -> Optional[str]:
-        if not self.buf:
-            return None
-        return Counter(self.buf).most_common(1)[0][0]
+    smoothing_score = vote_ratio * avg_conf
+    return smoothed_emotion, smoothing_score, vote_ratio, avg_conf
+
+
+def apply_centered_smoothing(
+    entries: List[dict],
+    window: int,
+    key_emotion: str,
+    out_key: str,
+):
+    """
+    Smoothing centré : fenêtre impaire (3 => n-1,n,n+1).
+    entries doit être trié par frame_index.
+    """
+    if window % 2 != 1 or window < 3:
+        raise ValueError("window doit être impair et >= 3 (ex: 3,5,7...)")
+
+    half = window // 2
+    n = len(entries)
+
+    for i in range(n):
+        lo = max(0, i - half)
+        hi = min(n, i + half + 1)
+        vals = [entries[j].get(key_emotion) for j in range(lo, hi)]
+        entries[i][out_key] = centered_mode(vals)
+
+
+def apply_smoothing_score_on_key(
+    entries: List[dict],
+    window: int,
+    emotion_key: str,
+    conf_key: str,
+    out_score_key: str,
+    out_vote_key: str,
+    out_avgconf_key: str,
+    out_winsize_key: str,
+):
+    """
+    Calcule un score de smoothing pour chaque entrée (fenêtre centrée).
+    - emotion_key: clé utilisée pour le vote
+    - conf_key: clé utilisée pour la confiance
+    """
+    if window % 2 != 1 or window < 3:
+        raise ValueError("window doit être impair et >= 3 (ex: 3,5,7...)")
+
+    half = window // 2
+    n = len(entries)
+
+    for i in range(n):
+        lo = max(0, i - half)
+        hi = min(n, i + half + 1)
+
+        emos = [entries[j].get(emotion_key) for j in range(lo, hi)]
+        confs = [entries[j].get(conf_key, 0.0) for j in range(lo, hi)]
+
+        _, score, vote_ratio, avg_conf = compute_smoothing_score(emos, confs)
+
+        entries[i][out_score_key] = float(score)
+        entries[i][out_vote_key] = float(vote_ratio)
+        entries[i][out_avgconf_key] = float(avg_conf)
+        entries[i][out_winsize_key] = int(hi - lo)
+
+
+def apply_centered_smoothing_per_dir(per_dir_rows: Dict[str, List[dict]], window: int):
+    """
+    Applique smoothing centré par (rel_dir, identity_id),
+    sur hse_emotion + deepface_emotion puis calcule smoothed_final_emotion.
+    + calcule smoothing score (nouveau).
+    """
+    for rel_dir, rows in per_dir_rows.items():
+        # group par identity_id
+        groups: Dict[int, List[dict]] = {}
+        for r in rows:
+            iid = int(r.get("identity_id", -1))
+            groups.setdefault(iid, []).append(r)
+
+        for iid, lst in groups.items():
+            lst.sort(key=lambda x: int(x.get("frame_index", -1)))
+
+            apply_centered_smoothing(
+                lst,
+                window=window,
+                key_emotion="hse_emotion",
+                out_key="smoothed_hse_emotion",
+            )
+            apply_centered_smoothing(
+                lst,
+                window=window,
+                key_emotion="deepface_emotion",
+                out_key="smoothed_deepface_emotion",
+            )
+
+            for r in lst:
+                sh = r.get("smoothed_hse_emotion")
+                sd = r.get("smoothed_deepface_emotion")
+                if sh is not None and sd is not None:
+                    r["smoothed_final_emotion"] = sh if sh == sd else sh
+                else:
+                    r["smoothed_final_emotion"] = sh or sd
+
+            # ----------------------------
+            # NOUVEAU: smoothing score
+            # ----------------------------
+            if ENABLE_SMOOTHING_SCORE:
+                if SMOOTH_SCORE_USE_FINAL:
+                    # vote + score sur final_emotion / final_confidence
+                    apply_smoothing_score_on_key(
+                        lst,
+                        window=window,
+                        emotion_key="final_emotion",
+                        conf_key="final_confidence",
+                        out_score_key="smoothing_score",
+                        out_vote_key="smoothing_vote_ratio",
+                        out_avgconf_key="smoothing_avg_conf_window",
+                        out_winsize_key="smoothing_window_size",
+                    )
+                else:
+                    # vote + score sur smoothed_final_emotion (vote) + final_confidence (confiance)
+                    apply_smoothing_score_on_key(
+                        lst,
+                        window=window,
+                        emotion_key="smoothed_final_emotion",
+                        conf_key="final_confidence",
+                        out_score_key="smoothing_score",
+                        out_vote_key="smoothing_vote_ratio",
+                        out_avgconf_key="smoothing_avg_conf_window",
+                        out_winsize_key="smoothing_window_size",
+                    )
+
+                # Bonus: est-ce que le smoothing a changé l'étiquette ?
+                for r in lst:
+                    r["was_smoothed_changed"] = (r.get("smoothed_final_emotion") != r.get("final_emotion"))
 
 
 # =============================================================================
-# BACKEND 1: DEEPFACE (amélioré)
+# BACKEND 1: DEEPFACE
 # =============================================================================
 
 class DeepFaceEmotionDetector:
     """
-    3) DeepFace avec backend de détection robuste (retinaface/mediapipe)
+    DeepFace avec backend robuste (retinaface/mediapipe)
     + support TTA (optionnel)
     """
 
@@ -297,7 +467,7 @@ class DeepFaceEmotionDetector:
 
 
 # =============================================================================
-# BACKEND 2: HSEMOTION (avec TTA)
+# BACKEND 2: HSEMOTION
 # =============================================================================
 
 class HSEmotionDetector:
@@ -397,7 +567,7 @@ def decide_final(
 
 
 # =============================================================================
-# MAIN PIPELINE (incremental + compare + smoothing)
+# MAIN PIPELINE
 # =============================================================================
 
 @dataclass
@@ -422,8 +592,13 @@ def analyze_emotions_incremental(
     - lit faces_root (images crops)
     - calcule HSEmotion + DeepFace (TTA optionnel)
     - ajoute métriques qualité
-    - smoothing basé sur frame_index (par rel_dir + identity_id)
+    - smoothing centré (n-1,n,n+1) par rel_dir + identity_id (2e passe)
     - garde un JSON master global + outputs par sous-dossier
+    - écrit 2 JSON:
+        1) emotions.json complet
+        2) emotions_final.json (résultats finaux uniquement)
+    + NOUVEAU:
+        - smoothing_score, smoothing_vote_ratio, smoothing_avg_conf_window, smoothing_window_size, was_smoothed_changed
     """
 
     os.makedirs(output_root, exist_ok=True)
@@ -474,44 +649,6 @@ def analyze_emotions_incremental(
 
     tasks.sort(key=lambda t: (t.rel_dir, t.identity_id, t.frame_index, t.filename))
 
-    # smoothing : un smoother par (rel_dir, identity_id)
-    smoothers_hse: Dict[Tuple[str, int], EmotionSmoother] = {}
-    smoothers_df: Dict[Tuple[str, int], EmotionSmoother] = {}
-
-    def get_smoother(d: Dict[Tuple[str, int], EmotionSmoother], key: Tuple[str, int]) -> EmotionSmoother:
-        if key not in d:
-            d[key] = EmotionSmoother(window=SMOOTHING_WINDOW)
-        return d[key]
-
-    # Seed smoothing avec historique master
-    if ENABLE_SMOOTHING:
-        history_map: Dict[Tuple[str, int], List[Tuple[int, Optional[str], Optional[str]]]] = {}
-
-        for rp, entry in master_results.items():
-            try:
-                old_rel_dir = os.path.dirname(rp) if os.path.dirname(rp) else "."
-                old_filename = os.path.basename(rp)
-
-                old_face_id = int(entry.get("face_id", parse_face_id(old_filename)))
-                old_track_id = int(entry.get("track_id", parse_track_id(old_filename)))
-                old_identity_id = int(entry.get("identity_id", identity_id(old_face_id, old_track_id)))
-
-                old_frame = int(entry.get("frame_index", parse_frame_index(old_filename)))
-                hse_e = entry.get("hse_emotion")
-                df_e = entry.get("deepface_emotion")
-
-                k = (old_rel_dir, old_identity_id)
-                history_map.setdefault(k, []).append((old_frame, hse_e, df_e))
-            except Exception:
-                continue
-
-        for k, rows in history_map.items():
-            rows.sort(key=lambda x: x[0])
-            hse_seed = [r[1] for r in rows[-SMOOTHING_WINDOW:]]
-            df_seed = [r[2] for r in rows[-SMOOTHING_WINDOW:]]
-            get_smoother(smoothers_hse, k).seed(hse_seed)
-            get_smoother(smoothers_df, k).seed(df_seed)
-
     per_dir_rows: Dict[str, List[dict]] = {}
     per_dir_json: Dict[str, Dict[str, dict]] = {}
 
@@ -544,9 +681,17 @@ def analyze_emotions_incremental(
                 "final_backend": "too_small",
                 "is_uncertain": True,
 
+                # champs smoothing (remplis en 2e passe)
                 "smoothed_hse_emotion": None,
                 "smoothed_deepface_emotion": None,
                 "smoothed_final_emotion": None,
+
+                # nouveau smoothing score (remplis en 2e passe)
+                "smoothing_score": 0.0,
+                "smoothing_vote_ratio": 0.0,
+                "smoothing_avg_conf_window": 0.0,
+                "smoothing_window_size": 0,
+                "was_smoothed_changed": False,
 
                 "quality_blur": q["blur"],
                 "quality_brightness": q["brightness"],
@@ -578,26 +723,6 @@ def analyze_emotions_incremental(
             hse_emotion, hse_conf, df_emotion, df_conf, bad_q
         )
 
-        smoothed_hse = None
-        smoothed_df = None
-        smoothed_final = None
-        if ENABLE_SMOOTHING:
-            key = (t.rel_dir, t.identity_id)
-
-            sh = get_smoother(smoothers_hse, key)
-            sd = get_smoother(smoothers_df, key)
-
-            sh.update(hse_emotion)
-            sd.update(df_emotion)
-
-            smoothed_hse = sh.get()
-            smoothed_df = sd.get()
-
-            if smoothed_hse is not None and smoothed_df is not None:
-                smoothed_final = smoothed_hse if smoothed_hse == smoothed_df else smoothed_hse
-            else:
-                smoothed_final = smoothed_hse or smoothed_df
-
         entry = {
             "relative_path": t.rel_path,
             "filename": t.filename,
@@ -617,9 +742,17 @@ def analyze_emotions_incremental(
             "final_backend": final_backend,
             "is_uncertain": bool(is_uncertain),
 
-            "smoothed_hse_emotion": smoothed_hse,
-            "smoothed_deepface_emotion": smoothed_df,
-            "smoothed_final_emotion": smoothed_final,
+            # champs smoothing (remplis en 2e passe)
+            "smoothed_hse_emotion": None,
+            "smoothed_deepface_emotion": None,
+            "smoothed_final_emotion": None,
+
+            # nouveau smoothing score (remplis en 2e passe)
+            "smoothing_score": 0.0,
+            "smoothing_vote_ratio": 0.0,
+            "smoothing_avg_conf_window": 0.0,
+            "smoothing_window_size": 0,
+            "was_smoothed_changed": False,
 
             "quality_blur": q["blur"],
             "quality_brightness": q["brightness"],
@@ -631,6 +764,25 @@ def analyze_emotions_incremental(
         per_dir_rows.setdefault(t.rel_dir, []).append(entry)
         per_dir_json.setdefault(t.rel_dir, {})[t.rel_path] = entry
         master_results[t.rel_path] = entry
+
+    # -------------------------------------------------------------------------
+    # 2e passe: smoothing centré sur per_dir_rows (n-1,n,n+1) + score
+    # -------------------------------------------------------------------------
+    if ENABLE_SMOOTHING:
+        apply_centered_smoothing_per_dir(per_dir_rows, window=CENTERED_SMOOTH_WINDOW)
+
+        # synchroniser aussi per_dir_json
+        for rel_dir, rows in per_dir_rows.items():
+            for r in rows:
+                rp = r["relative_path"]
+                if rel_dir in per_dir_json and rp in per_dir_json[rel_dir]:
+                    per_dir_json[rel_dir][rp] = r
+
+        # synchroniser master_results (pour les nouveaux)
+        for rel_dir, rows in per_dir_rows.items():
+            for r in rows:
+                rp = r["relative_path"]
+                master_results[rp] = r
 
     timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
 
@@ -657,6 +809,13 @@ def analyze_emotions_incremental(
         "smoothed_deepface_emotion",
         "smoothed_final_emotion",
 
+        # NEW
+        "smoothing_score",
+        "smoothing_vote_ratio",
+        "smoothing_avg_conf_window",
+        "smoothing_window_size",
+        "was_smoothed_changed",
+
         "quality_blur",
         "quality_brightness",
         "quality_contrast",
@@ -671,23 +830,51 @@ def analyze_emotions_incremental(
 
         csv_path = os.path.join(run_folder, "emotions.csv")
         json_path = os.path.join(run_folder, "emotions.json")
+        final_json_path = os.path.join(run_folder, "emotions_final.json")
 
         with open(csv_path, mode="w", newline="", encoding="utf-8") as csvfile:
             csvfile.write(f"# Emotions analysis run at {timestamp}\n")
             csvfile.write(f"# DeepFace backend: {DEEPFACE_DETECTOR_BACKEND}, enforce={DEEPFACE_ENFORCE_DETECTION}\n")
-            csvfile.write(f"# TTA: {ENABLE_TTA}, smoothing: {ENABLE_SMOOTHING} (window={SMOOTHING_WINDOW})\n")
+            csvfile.write(f"# TTA: {ENABLE_TTA}, smoothing: {ENABLE_SMOOTHING} (centered window={CENTERED_SMOOTH_WINDOW})\n")
             csvfile.write(f"# Fallback thresholds: HSE={HSEMOTION_CONFIDENCE_THRESHOLD}, DF={DEEPFACE_CONFIDENCE_THRESHOLD}\n")
+            csvfile.write(f"# Smoothing score: {ENABLE_SMOOTHING_SCORE} (use_final={SMOOTH_SCORE_USE_FINAL})\n")
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for row in rows:
                 writer.writerow(row)
 
+        # JSON complet
         with open(json_path, mode="w", encoding="utf-8") as jsonfile:
             json.dump(per_dir_json[rel_dir], jsonfile, indent=4, ensure_ascii=False)
 
+        # JSON "final only"
+        final_only = {}
+        for row in rows:
+            rp = row["relative_path"]
+            final_only[rp] = {
+                "final_emotion": row.get("final_emotion"),
+                "final_confidence": row.get("final_confidence", 0.0),
+                "final_backend": row.get("final_backend"),
+                "is_uncertain": row.get("is_uncertain", True),
+                "smoothed_final_emotion": row.get("smoothed_final_emotion"),
+                "smoothing_score": row.get("smoothing_score", 0.0),
+                "smoothing_vote_ratio": row.get("smoothing_vote_ratio", 0.0),
+                "smoothing_avg_conf_window": row.get("smoothing_avg_conf_window", 0.0),
+                "smoothing_window_size": row.get("smoothing_window_size", 0),
+                "was_smoothed_changed": row.get("was_smoothed_changed", False),
+                "frame_index": row.get("frame_index"),
+                "identity_id": row.get("identity_id"),
+                "track_id": row.get("track_id"),
+                "face_id": row.get("face_id"),
+            }
+
+        with open(final_json_path, mode="w", encoding="utf-8") as f:
+            json.dump(final_only, f, indent=4, ensure_ascii=False)
+
         print(f"{len(rows)} faces analysées pour le dossier '{rel_dir}' ✅")
-        print(f"→ CSV :  {csv_path}")
-        print(f"→ JSON : {json_path}")
+        print(f"→ CSV :        {csv_path}")
+        print(f"→ JSON :       {json_path}")
+        print(f"→ JSON final : {final_json_path}")
 
     save_master_json(master_results, master_json_path)
     print(f"Master JSON mis à jour : {master_json_path}")
