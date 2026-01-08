@@ -1,34 +1,54 @@
 # src/emotion_summary_report.py
-# Résumé des émotions (par personne) - détecte automatiquement les sessions dans TON arborescence.
+# Résumé des émotions (par personne) — REGROUPÉ PAR VIDÉO (frames_... + TIMESTAMP DU RÉSUMÉ)
 #
-# Run sans arguments:
+# ✅ Run sans arguments:
 #   python src/emotion_summary_report.py
 #
-# Scanne:
-#   output/emotions/**/(emotions_final.json|emotions.json|emotions_master.json)
+# Entrée attendue (format analyze_emotion.py):
+#   output/emotion_results/<...>/latest/analyzed_emotions_final.json
+#   (fallback: analyzed_emotions.json, emotion_results_master.json)
 #
-# Écrit:
-#   output/reports/<même_chemin_relatif_que_dans_output/emotions/>/
+# Sortie:
+#   output/reports/<base>/<SUMMARY_TIMESTAMP>/
 #     - summary.json
 #     - summary_people.csv
 #     - report.txt
+#
+# ✅ Anti-duplication:
+# - Si un résumé existe déjà pour la même vidéo (n'importe quel timestamp), on SKIP.
+#
+# ✅ Cas master global:
+# - Si le fichier analysé est directement sous output/emotion_results (ex: emotion_results_master.json),
+#   la session devient "ALL_SESSIONS_MASTER" (au lieu de unknown_session)
+#
+# Notes:
+# - Supporte JSON dict {path: record} ET JSON list [{...}, ...]
+# - person_id: global_person_id (si présent) -> identity_id -> path (person_0000) -> fallback
+# - tri temporel: time_ms / _tXXXX -> frame_index -> path
 
 import re
 import json
 import csv
 from dataclasses import dataclass, asdict
-from typing import Dict, Any, List, Tuple, Union, Optional
+from typing import Dict, Any, List, Tuple, Union
 from collections import Counter, defaultdict
 from pathlib import Path
+from datetime import datetime
 
 
 # =============================================================================
-# Helpers: parsing & time
+# Helpers
 # =============================================================================
 
-PERSON_RE = re.compile(r"(?:^|[\\/])(person[_-]?\d+)(?:[\\/]|$)", re.IGNORECASE)
+PERSON_DIR_RE = re.compile(r"^person[_-]?\d+$", re.IGNORECASE)
+PERSON_IN_PATH_RE = re.compile(r"(?:^|[\\/])(person[_-]?\d+)(?:[\\/]|$)", re.IGNORECASE)
 T_MS_RE = re.compile(r"_t(\d+)", re.IGNORECASE)
 FRAME_RE = re.compile(r"frame[_-]?(\d+)", re.IGNORECASE)
+
+
+def now_ts() -> str:
+    """Timestamp du résumé (moment où on lance le script)."""
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 def safe_float(x, default=0.0) -> float:
@@ -57,12 +77,21 @@ def format_time_from_ms(ms: int) -> str:
 
 
 def extract_person_id(path: str, rec: Dict[str, Any]) -> str:
-    # 1) identity_id si présent
+    """
+    Priorité:
+      1) global_person_id (unique cross-videos)
+      2) identity_id (local)
+      3) person_0000 dans le path
+      4) fallback
+    """
+    gpid = rec.get("global_person_id", None)
+    if isinstance(gpid, str) and gpid.strip():
+        return gpid.strip()
+
     if rec.get("identity_id", None) is not None:
         return f"person_{safe_int(rec.get('identity_id'), 0):04d}"
 
-    # 2) essayer de trouver person_0000 dans le path
-    m = PERSON_RE.search(path or "")
+    m = PERSON_IN_PATH_RE.search(path or "")
     if m:
         pid = m.group(1).lower().replace("-", "_")
         pid = re.sub(r"person_?(\d+)", lambda mm: f"person_{int(mm.group(1)):04d}", pid)
@@ -117,6 +146,10 @@ def choose_confidence(rec: Dict[str, Any]) -> float:
         c = 1.0
 
     return c
+
+
+def ensure_dir(p: Path) -> None:
+    p.mkdir(parents=True, exist_ok=True)
 
 
 # =============================================================================
@@ -198,45 +231,30 @@ def summarize_person(items: List[Dict[str, Any]], person_id: str) -> PersonSumma
 
 
 # =============================================================================
-# IO + compat formats (dict OU list)
+# IO + compat formats
 # =============================================================================
-
-def ensure_dir(p: Path) -> None:
-    p.mkdir(parents=True, exist_ok=True)
-
 
 def load_json_any(path: Path) -> Union[Dict[str, Any], List[Any]]:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def normalize_master(data: Union[Dict[str, Any], List[Any]]) -> Dict[str, Dict[str, Any]]:
-    """
-    Retourne toujours un dict {path_key: record_dict}
-    - Si data est déjà dict: on le garde (en filtrant les non-dict)
-    - Si data est une liste: on tente de construire une clé:
-        - rec["path"] si existe
-        - sinon rec["file"] / rec["img_path"] / rec["image_path"]
-        - sinon "idx_<n>"
-    """
+def normalize_master(data: Union[Dict[str, Any], List[Any]], fallback_prefix: str) -> Dict[str, Dict[str, Any]]:
     if isinstance(data, dict):
-        out: Dict[str, Dict[str, Any]] = {}
-        for k, v in data.items():
-            if isinstance(v, dict):
-                out[str(k)] = v
-        return out
+        return {str(k): v for k, v in data.items() if isinstance(v, dict)}
 
     if isinstance(data, list):
-        out = {}
+        out: Dict[str, Dict[str, Any]] = {}
         for i, item in enumerate(data):
             if not isinstance(item, dict):
                 continue
             key = (
                 item.get("path")
+                or item.get("relative_path")
                 or item.get("img_path")
                 or item.get("image_path")
                 or item.get("file")
-                or f"idx_{i:06d}"
+                or f"{fallback_prefix}/idx_{i:06d}"
             )
             out[str(key)] = item
         return out
@@ -283,11 +301,61 @@ def write_report_txt(out_path: Path, people: List[PersonSummary], session_label:
         lines.append(f"- Émotion dominante : {ps.dominant_emotion} ({ps.dominant_ratio*100:.1f}%)")
         lines.append(f"- Confiance moyenne : {ps.avg_confidence:.3f}")
         lines.append(f"- Stabilité : {ps.stability_score:.3f} (change_rate={ps.change_rate:.3f}, transitions={ps.n_transitions})")
-        lines.append(f"- Moment le plus intense : {ps.most_intense_emotion} (conf={ps.most_intense_confidence:.3f}) à {ps.most_intense_time} (frame={ps.most_intense_frame})")
+        lines.append(
+            f"- Moment le plus intense : {ps.most_intense_emotion} "
+            f"(conf={ps.most_intense_confidence:.3f}) à {ps.most_intense_time} "
+            f"(frame={ps.most_intense_frame})"
+        )
         lines.append("- Distribution (top) : " + ", ".join([f"{e} {r*100:.1f}%" for e, r in ps.top_emotions]))
         lines.append("")
     with out_path.open("w", encoding="utf-8") as f:
         f.write("\n".join(lines))
+
+
+# =============================================================================
+# Grouping: base key (ignore run dir + ignore person_XXXX) + master global handling
+# =============================================================================
+
+def video_base_key(input_root: Path, json_path: Path) -> Tuple[str, Path]:
+    """
+    Retourne une base de session SANS timestamp:
+      output/emotion_results/<...>/person_0000/<run>/file.json
+    -> base = <...> (sans person_XXXX, sans <run>, sans file)
+
+    Cas spécial:
+      output/emotion_results/emotion_results_master.json
+    -> base vide => ALL_SESSIONS_MASTER
+    """
+    rel = json_path.relative_to(input_root)
+    parts = list(rel.parts)
+
+    # remove file
+    if len(parts) >= 1:
+        parts = parts[:-1]
+    # remove run dir
+    if len(parts) >= 1:
+        parts = parts[:-1]
+
+    parts_no_person = [p for p in parts if not PERSON_DIR_RE.match(p)]
+
+    if not parts_no_person:
+        rel_out = Path("ALL_SESSIONS_MASTER")
+        label = "ALL_SESSIONS_MASTER"
+        return label, rel_out
+
+    rel_out = Path(*parts_no_person)
+    label = str(rel_out).replace("\\", "/")
+    return label, rel_out
+
+
+def any_existing_summary(out_base_dir: Path) -> bool:
+    """SKIP si on trouve déjà un summary.json dans un sous-dossier timestamp."""
+    if not out_base_dir.exists():
+        return False
+    for p in out_base_dir.rglob("summary.json"):
+        if p.is_file():
+            return True
+    return False
 
 
 # =============================================================================
@@ -318,12 +386,39 @@ def build_enriched_records(master: Dict[str, Dict[str, Any]], prefer_smoothed: b
     return per_person
 
 
-def run_one_session(input_json: Path, out_dir: Path, prefer_smoothed: bool, session_label: str) -> None:
+def run_one_video(group_label: str, files: List[Path], input_root: Path, out_root: Path, prefer_smoothed: bool, summary_ts: str) -> str:
+    """
+    Fusionne tous les JSON de la même base.
+    Sortie: output/reports/<base>/<summary_ts>/
+    SKIP si un résumé existe déjà pour cette base.
+    """
+    _, rel_base_dir = video_base_key(input_root, files[0])
+    out_base_dir = out_root / rel_base_dir
+
+    # ✅ SKIP si résumé existe déjà (quelque soit timestamp)
+    if any_existing_summary(out_base_dir):
+        return "skipped"
+
+    out_dir = out_base_dir / summary_ts
     ensure_dir(out_dir)
 
-    data = load_json_any(input_json)
-    master = normalize_master(data)
-    per_person = build_enriched_records(master, prefer_smoothed=prefer_smoothed)
+    merged_master: Dict[str, Dict[str, Any]] = {}
+
+    for fpath in files:
+        data = load_json_any(fpath)
+        master = normalize_master(data, fallback_prefix=str(fpath.parent))
+
+        for k, v in master.items():
+            kk = k
+            if kk in merged_master:
+                kk = f"{k}__{fpath.parent.name}"
+                n = 2
+                while kk in merged_master:
+                    kk = f"{k}__{fpath.parent.name}__{n}"
+                    n += 1
+            merged_master[kk] = v
+
+    per_person = build_enriched_records(merged_master, prefer_smoothed=prefer_smoothed)
 
     people_summaries: List[PersonSummary] = []
     for pid, items in per_person.items():
@@ -336,12 +431,12 @@ def run_one_session(input_json: Path, out_dir: Path, prefer_smoothed: bool, sess
     for items in per_person.values():
         for it in items:
             global_counter[it["emotion"]] += 1
-
     global_dominant = global_counter.most_common(1)[0][0] if global_counter else "Unknown"
 
     summary = {
-        "session": session_label,
-        "input": str(input_json.resolve()),
+        "session": group_label,
+        "summary_timestamp": summary_ts,
+        "inputs": [str(p.resolve()) for p in files],
         "prefer_smoothed": prefer_smoothed,
         "n_people": len(people_summaries),
         "total_frames": total_frames,
@@ -358,20 +453,9 @@ def run_one_session(input_json: Path, out_dir: Path, prefer_smoothed: bool, sess
 
     write_summary_json(out_dir / "summary.json", summary)
     write_people_csv(out_dir / "summary_people.csv", people_summaries)
-    write_report_txt(out_dir / "report.txt", people_summaries, session_label=session_label)
+    write_report_txt(out_dir / "report.txt", people_summaries, session_label=group_label)
 
-
-def find_session_files(input_root: Path, candidates: List[str]) -> List[Path]:
-    """
-    Retourne la liste des fichiers JSON de session trouvés sous input_root.
-    On cherche récursivement chaque nom dans candidates.
-    """
-    found: List[Path] = []
-    for name in candidates:
-        found.extend(input_root.rglob(name))
-    # dédoublonnage + tri
-    uniq = sorted(set([p for p in found if p.is_file()]), key=lambda p: str(p).lower())
-    return uniq
+    return "ok"
 
 
 # =============================================================================
@@ -379,57 +463,73 @@ def find_session_files(input_root: Path, candidates: List[str]) -> List[Path]:
 # =============================================================================
 
 def main() -> None:
-    # Defaults adaptés à TON projet
-    input_root = Path("output/emotions")
+    input_root = Path("output/emotion_results")
     out_root = Path("output/reports")
 
-    # Choix de fichiers "session" possibles (chez toi: emotions_final.json existe)
-    candidate_files = ["emotions_final.json", "emotions.json", "emotions_master.json"]
+    # On scanne les outputs par dossier (latest/...) + le master global éventuel
+    candidates = [
+        "analyzed_emotions_final.json",
+        "analyzed_emotions.json",
+        "emotion_results_master.json",
+    ]
 
-    prefer_smoothed = True  # par défaut
-
+    prefer_smoothed = True
     ensure_dir(out_root)
 
     if not input_root.exists():
         print("[ERREUR] Dossier introuvable :", input_root.resolve())
         return
 
-    session_files = find_session_files(input_root, candidate_files)
+    summary_ts = now_ts()
 
-    if not session_files:
+    # collect tous les fichiers candidats
+    all_files: List[Path] = []
+    for name in candidates:
+        all_files.extend(list(input_root.rglob(name)))
+    all_files = [p for p in set(all_files) if p.is_file()]
+    all_files.sort(key=lambda p: str(p).lower())
+
+    if not all_files:
         print("[ERREUR] Aucune session trouvée.")
         print(" - Dossier scanné :", input_root.resolve())
-        print(" - Fichiers cherchés :", ", ".join(candidate_files))
+        print(" - Fichiers cherchés :", ", ".join(candidates))
         return
 
-    ok, failed = 0, 0
+    # group par base (ignore run dir + ignore person_XXXX)
+    groups: Dict[str, List[Path]] = defaultdict(list)
+    for f in all_files:
+        label, _ = video_base_key(input_root, f)
+        groups[label].append(f)
 
-    for input_json in session_files:
+    ok = skipped = failed = 0
+
+    for label in sorted(groups.keys()):
+        files = sorted(groups[label], key=lambda p: str(p).lower())
         try:
-            # session_label: chemin relatif sans le nom du fichier
-            rel_parent = input_json.parent.relative_to(input_root)
-            session_label = str(rel_parent).replace("\\", "/")
-
-            # output: on miroir la même structure sous output/reports
-            out_dir = out_root / rel_parent
-
-            run_one_session(
-                input_json=input_json,
-                out_dir=out_dir,
+            status = run_one_video(
+                group_label=label,
+                files=files,
+                input_root=input_root,
+                out_root=out_root,
                 prefer_smoothed=prefer_smoothed,
-                session_label=session_label
+                summary_ts=summary_ts
             )
-            ok += 1
-            print(f"[OK] {session_label} -> {out_dir}")
+            if status == "skipped":
+                skipped += 1
+                print(f"[SKIP] {label} (résumé déjà existant)")
+            else:
+                ok += 1
+                print(f"[OK] {label} -> timestamp={summary_ts} (n_files={len(files)})")
         except Exception as e:
             failed += 1
-            print(f"[FAIL] {input_json} -> {type(e).__name__}: {e}")
+            print(f"[FAIL] {label} -> {type(e).__name__}: {e}")
 
-    print("\n=== Résumé Batch ===")
-    print(f"Sessions trouvées : {len(session_files)}")
-    print(f"OK               : {ok}")
-    print(f"Échecs           : {failed}")
-    print(f"Sortie           : {out_root.resolve()}")
+    print("\n=== Résumé (auto) ===")
+    print(f"Groupes trouvés  : {len(groups)}")
+    print(f"OK              : {ok}")
+    print(f"SKIP            : {skipped}")
+    print(f"Échecs          : {failed}")
+    print(f"Sortie          : {out_root.resolve()}")
 
 
 if __name__ == "__main__":
