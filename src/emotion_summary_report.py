@@ -14,10 +14,10 @@
 #     - summary_people.csv
 #     - report.txt
 #
-# ✅ Anti-duplication:
+# Anti-duplication:
 # - Si un résumé existe déjà pour la même vidéo (n'importe quel timestamp), on SKIP.
 #
-# ✅ Cas master global:
+# Cas master global:
 # - Si le fichier analysé est directement sous output/emotion_results (ex: emotion_results_master.json),
 #   la session devient "ALL_SESSIONS_MASTER" (au lieu de unknown_session)
 #
