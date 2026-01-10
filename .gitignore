@@ -5,5 +5,10 @@
 /mp_env
 /models 
 /venv_gpu
-/src/__pycache__
+
+
+# Python cache
+__pycache__/
+*.pyc
 *.zip
+
