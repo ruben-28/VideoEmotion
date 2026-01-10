@@ -20,16 +20,12 @@ frame_extraction:
 face_detection:
   backend: mediapipe
 
-  # --- Tracking / association ---
   tracking:
     enabled: true
     max_missing_frames: 60
     iou_threshold: 0.30
     center_distance_max: 220
 
-  # -------------------------------------------------------
-  # ⚠️ UTILISÉ DIRECTEMENT par detect_faces.py
-  # -------------------------------------------------------
   filters:
     min_det_score: 0.70
     min_det_size: 80
@@ -41,10 +37,6 @@ face_detection:
     enabled: true
     alpha: 0.70
 
-  # -------------------------------------------------------
-  # Conservé pour compatibilité / extensions futures
-  # (non lu par detect_faces.py actuellement)
-  # -------------------------------------------------------
   quality_filters:
     min_face_size: 60
     blur_min_laplacian: 40.0
@@ -53,11 +45,18 @@ face_detection:
       max: 220
 
 # =========================================================
-# Emotion Analysis
+# Emotion Analysis (OFFLINE)
 # =========================================================
 emotion_analysis:
   primary_model: hsemotion
   fallback_model: deepface
+
+  quality:
+    blur_min_laplacian: 60.0
+    brightness_min: 35.0
+    brightness_max: 220.0
+
+  run_deepface_always: false
 
   hsemotion:
     confidence_threshold: 0.65
@@ -75,11 +74,34 @@ emotion_analysis:
       - final_emotion
       - confidence
 
+  smoothing_score:
+    enabled: true
+    use_final: true
+
+  uncertain:
+    enabled: true
+    min_conf: 0.55
+
   tta:
     enabled: true
     max_variants: 5
     rotation_deg: 5
     brightness_factor: 0.10
+
+# =========================================================
+# Realtime (TEMPS RÉEL) — seuils séparés (PLUS PERMISSIFS)
+# =========================================================
+realtime:
+  mirror_fix: true
+  display_width: 0
+
+  face_detection:
+    min_det_score: 0.55
+
+  emotion:
+    hse_conf_threshold: 0.25
+    uncertain_min_conf: 0.10
+    enable_uncertain: true
 
 # =========================================================
 # Summary & Reporting
@@ -92,14 +114,14 @@ summary:
   master_session_name: ALL_SESSIONS_MASTER
 
 # =========================================================
-# Paths (logiques, pas obligatoires)
+# Paths
 # =========================================================
 paths:
   videos: data/videos
   extracted_frames: data/extracted_frames
   detected_faces: data/detected_faces
   emotion_results: output/emotion_results
-  reports: output/reports
+  reports: output/reports/offline
 
 # =========================================================
 # Logging & Debug
