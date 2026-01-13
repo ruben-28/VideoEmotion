@@ -16,8 +16,7 @@ from datetime import datetime
 import sys
 
 # Import dashboard functions for video display
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from dashboard import (
+from .common import (
     load_and_prepare,
     render_video_block,
     render_overview,
