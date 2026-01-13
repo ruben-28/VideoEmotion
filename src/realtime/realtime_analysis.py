@@ -9,6 +9,7 @@ import mediapipe as mp
 import yaml
 
 import json
+import subprocess
 
 from src.core.emotion.emotion_infer import EmotionInfer
 
@@ -69,6 +70,35 @@ def pick_largest_detection(detections, W: int, H: int):
             best = (x, y, w, h)
     return best
 
+import shutil
+
+def transcode_to_h264(src: Path, dst: Path) -> bool:
+    """
+    Rend la vidéo lisible Chrome/Streamlit (H.264 + yuv420p + faststart).
+    Cherche automatiquement ffmpeg.
+    """
+    ffmpeg_bin = shutil.which("ffmpeg")
+
+    if ffmpeg_bin is None:
+        print("[ERROR] ffmpeg introuvable. Ajoute ffmpeg au PATH ou installe-le.")
+        return False
+
+    try:
+        cmd = [
+            ffmpeg_bin, "-y",
+            "-i", str(src),
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-an",
+            str(dst),
+        ]
+        subprocess.run(cmd, check=True)
+        return True
+    except Exception as e:
+        print(f"[ERROR] Transcodage ffmpeg échoué: {e}")
+        return False
+
 
 def main():
     ap = argparse.ArgumentParser(description="Realtime emotion analysis (HSEmotion only, largest face).")
@@ -90,7 +120,6 @@ def main():
 
     args = ap.parse_args()
 
-    # Determine saving behavior
     do_save_json = not args.no_save_json
     do_save_video = not args.no_save_video
 
@@ -105,14 +134,11 @@ def main():
     # -------------------------------
     # Realtime config (with fallback)
     # -------------------------------
-    # mirror
     mirror_fix = bool(cfg_get(cfg, "realtime", "mirror_fix", default=True))
 
-    # display width: CLI > config > 0
     cfg_display_width = int(cfg_get(cfg, "realtime", "display_width", default=0) or 0)
     display_width = args.display_width if args.display_width is not None else cfg_display_width
 
-    # emotion thresholds (realtime > fallback emotion_analysis)
     hse_thr = float(cfg_get(cfg, "realtime", "emotion", "hse_conf_threshold",
                             default=cfg_get(cfg, "emotion_analysis", "hsemotion", "confidence_threshold", default=0.65)))
     enable_uncertain = bool(cfg_get(cfg, "realtime", "emotion", "enable_uncertain",
@@ -120,7 +146,6 @@ def main():
     uncertain_min = float(cfg_get(cfg, "realtime", "emotion", "uncertain_min_conf",
                                   default=cfg_get(cfg, "emotion_analysis", "uncertain", "min_conf", default=0.55)))
 
-    # detection threshold: CLI > realtime > offline face_detection.filters
     if args.min_det_score is not None:
         min_det_score = float(args.min_det_score)
     else:
@@ -142,158 +167,189 @@ def main():
     out_root = Path(args.out_dir)
     if not out_root.is_absolute():
         out_root = (project_root / out_root).resolve()
-    
+
     session_dir = out_root / f"session_{session_ts}"
-    
-    # Create folder only if we are saving something
+
+    json_path: Path | None = None
+    video_path: Path | None = None
+    h264_path: Path | None = None
+
     if do_save_json or do_save_video:
         out_root.mkdir(parents=True, exist_ok=True)
         session_dir.mkdir(parents=True, exist_ok=True)
 
         json_path = session_dir / "realtime_emotions.json"
+
+        # ✅ vidéo "normale" (OpenCV mp4v) -> on la garde
         video_path = session_dir / "session.mp4"
+
+        # ✅ vidéo browser-friendly (H264) -> générée à la fin
+        h264_path = session_dir / "session_h264.mp4"
 
     records = []
     video_writer = None
-
-    # Track session start time (ms) for readable timestamps
     session_start_ms = None
 
-    # -------------------------------
-    # Camera
-    # -------------------------------
-    cap = cv2.VideoCapture(args.camera_id)
-    if not cap.isOpened():
-        print(f"[ERREUR] Impossible d'ouvrir la caméra id={args.camera_id}")
-        return
+    cap = None
+    wrote_any_frame = False
 
-    # Init video writer (if requested)
-    if do_save_video:
-        fps_out = cap.get(cv2.CAP_PROP_FPS)
-        if not fps_out or fps_out <= 1:
-            fps_out = 25.0
-        W0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        H0 = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    try:
+        # -------------------------------
+        # Camera
+        # -------------------------------
+        cap = cv2.VideoCapture(args.camera_id)
+        if not cap.isOpened():
+            print(f"[ERREUR] Impossible d'ouvrir la caméra id={args.camera_id}")
+            return
 
-        # video_path ne peut être None si do_save_video True
-        video_writer = cv2.VideoWriter(str(video_path), fourcc, float(fps_out), (W0, H0))
-        if not video_writer.isOpened():
-            print("[WARN] Impossible d'ouvrir VideoWriter, désactivation save-video.")
-            video_writer = None
-            do_save_video = False  # important: pour cohérence fin de script
+        # Init video writer (if requested)
+        if do_save_video and video_path is not None:
+            fps_out = cap.get(cv2.CAP_PROP_FPS)
+            if not fps_out or fps_out <= 1:
+                fps_out = 25.0
+            W0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            H0 = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    mp_face = mp.solutions.face_detection
-    with mp_face.FaceDetection(model_selection=1, min_detection_confidence=min_det_score) as face_det:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            video_writer = cv2.VideoWriter(str(video_path), fourcc, float(fps_out), (W0, H0))
+            if not video_writer.isOpened():
+                print("[WARN] Impossible d'ouvrir VideoWriter, désactivation save-video.")
+                video_writer = None
+                do_save_video = False
 
-            if mirror_fix:
-                frame = cv2.flip(frame, 1)
+        mp_face = mp.solutions.face_detection
+        with mp_face.FaceDetection(model_selection=1, min_detection_confidence=min_det_score) as face_det:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
 
-            H, W = frame.shape[:2]
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            res = face_det.process(rgb)
+                if mirror_fix:
+                    frame = cv2.flip(frame, 1)
 
-            if res.detections:
-                box = pick_largest_detection(res.detections, W=W, H=H)
-                if box:
-                    x, y, w, h = box
-                    face = frame[y:y + h, x:x + w]
-                    face = cv2.resize(face, (224, 224), interpolation=cv2.INTER_LINEAR)
+                H, W = frame.shape[:2]
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                res = face_det.process(rgb)
 
-                    result = infer.infer(face)
-                    emo = result.emotion if result.emotion else "Uncertain"
-                    label = f"{emo} ({result.confidence:.2f}) [{result.backend}]"
+                if res.detections:
+                    box = pick_largest_detection(res.detections, W=W, H=H)
+                    if box:
+                        x, y, w, h = box
+                        face = frame[y:y + h, x:x + w]
+                        face = cv2.resize(face, (224, 224), interpolation=cv2.INTER_LINEAR)
 
-                    # Colors (BGR) + per-state bbox color
-                    TEXT_COLOR = (255, 255, 255)
-                    BG_COLOR = (0, 0, 0)
-                    BBOX_COLOR = (0, 0, 255) if result.is_uncertain else (0, 255, 0)
+                        result = infer.infer(face)
+                        emo = result.emotion if result.emotion else "Uncertain"
+                        label = f"{emo} ({result.confidence:.2f}) [{result.backend}]"
 
-                    # BBOX
-                    cv2.rectangle(frame, (x, y), (x + w, y + h), BBOX_COLOR, args.bbox_thickness)
+                        TEXT_COLOR = (255, 255, 255)
+                        BG_COLOR = (0, 0, 0)
+                        BBOX_COLOR = (0, 0, 255) if result.is_uncertain else (0, 255, 0)
 
-                    # Text with background
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    font_scale = args.font_scale
-                    text_thickness = args.text_thickness
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), BBOX_COLOR, args.bbox_thickness)
 
-                    (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
-                    tx = x
-                    ty = max(text_h + 10, y - 10)
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        font_scale = args.font_scale
+                        text_thickness = args.text_thickness
 
-                    cv2.rectangle(
-                        frame,
-                        (tx, ty - text_h - baseline - 6),
-                        (tx + text_w + 10, ty + 6),
-                        BG_COLOR,
-                        thickness=-1
-                    )
+                        (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
+                        tx = x
+                        ty = max(text_h + 10, y - 10)
+
+                        cv2.rectangle(
+                            frame,
+                            (tx, ty - text_h - baseline - 6),
+                            (tx + text_w + 10, ty + 6),
+                            BG_COLOR,
+                            thickness=-1
+                        )
+                        cv2.putText(
+                            frame,
+                            label,
+                            (tx + 5, ty),
+                            font,
+                            font_scale,
+                            TEXT_COLOR,
+                            text_thickness,
+                            cv2.LINE_AA
+                        )
+
+                        if do_save_json and json_path is not None:
+                            t_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC) or 0)
+                            if session_start_ms is None:
+                                session_start_ms = t_ms
+                            t_rel = max(0, t_ms - session_start_ms)
+
+                            records.append({
+                                "time_ms": t_ms,
+                                "t_rel_ms": t_rel,
+                                "timestamp": format_time_from_ms(t_rel),
+                                "emotion": emo,
+                                "confidence": float(result.confidence),
+                                "backend": str(result.backend),
+                                "is_uncertain": bool(result.is_uncertain),
+                                "bbox": [int(x), int(y), int(w), int(h)],
+                            })
+                else:
                     cv2.putText(
-                        frame,
-                        label,
-                        (tx + 5, ty),
-                        font,
-                        font_scale,
-                        TEXT_COLOR,
-                        text_thickness,
-                        cv2.LINE_AA
+                        frame, "No face", (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA
                     )
 
-                    # Save JSON record
-                    if do_save_json:
-                        t_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC) or 0)
-                        if session_start_ms is None:
-                            session_start_ms = t_ms
-                        t_rel = max(0, t_ms - session_start_ms)
+                # ✅ Save annotated video (write BEFORE resize)
+                if video_writer is not None:
+                    video_writer.write(frame)
+                    wrote_any_frame = True
 
-                        records.append({
-                            "time_ms": t_ms,
-                            "t_rel_ms": t_rel,
-                            "timestamp": format_time_from_ms(t_rel),
-                            "emotion": emo,
-                            "confidence": float(result.confidence),
-                            "backend": str(result.backend),
-                            "is_uncertain": bool(result.is_uncertain),
-                            "bbox": [int(x), int(y), int(w), int(h)],
-                        })
+                # Optional resize for display only
+                if display_width and display_width > 0:
+                    scale = display_width / float(W)
+                    frame = cv2.resize(frame, (display_width, int(H * scale)))
+
+                cv2.imshow("VideoEmotion Realtime (HSE only) - press q to quit", frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+
+    finally:
+        # -------------------------------
+        # Always cleanup & save on exit
+        # -------------------------------
+        if cap is not None:
+            cap.release()
+
+        if video_writer is not None:
+            video_writer.release()
+
+        # Write JSON at end
+        if do_save_json and json_path is not None:
+            try:
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump({"session": session_ts, "records": records}, f, ensure_ascii=False, indent=2)
+                print(f"[OK] JSON sauvegardé: {json_path}")
+            except Exception as e:
+                print(f"[WARN] Écriture JSON échouée: {e}")
+
+        # ✅ Ensure BOTH videos exist: session.mp4 + session_h264.mp4
+        if do_save_video and video_path is not None:
+            if video_path.exists():
+                print(f"[OK] Vidéo normale sauvegardée: {video_path}")
             else:
-                cv2.putText(
-                    frame, "No face", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA
-                )
+                print("[WARN] session.mp4 introuvable (aucune frame écrite ?)")
 
-            # Save annotated video (write BEFORE resize)
-            if video_writer is not None:
-                video_writer.write(frame)
+            # Only transcode if we actually wrote frames
+            if wrote_any_frame and video_path.exists() and h264_path is not None:
+                if not h264_path.exists():
+                    ok = transcode_to_h264(video_path, h264_path)
+                    if ok:
+                        print(f"[OK] Vidéo browser-friendly (H264): {h264_path}")
+                    else:
+                        print("[WARN] Impossible de générer session_h264.mp4 (ffmpeg a échoué).")
+                else:
+                    print(f"[SKIP] H264 déjà présent: {h264_path}")
+            else:
+                print("[WARN] Transcodage ignoré (aucune frame écrite ou fichier manquant).")
 
-            # Optional resize for display only
-            if display_width and display_width > 0:
-                scale = display_width / float(W)
-                frame = cv2.resize(frame, (display_width, int(H * scale)))
-
-            cv2.imshow("VideoEmotion Realtime (HSE only) - press q to quit", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-
-    cap.release()
-    if video_writer is not None:
-        video_writer.release()
-
-    # Write JSON at end
-    if do_save_json and json_path is not None:
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({"session": session_ts, "records": records}, f, ensure_ascii=False, indent=2)
-        print(f"[OK] JSON sauvegardé: {json_path}")
-
-    # Video message
-    if do_save_video and video_writer is not None and video_path is not None:
-        print(f"[OK] Vidéo sauvegardée: {video_path}")
-
-    cv2.destroyAllWindows()
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

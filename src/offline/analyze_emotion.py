@@ -16,7 +16,18 @@ from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 
 import yaml
-from deepface import DeepFace
+import yaml
+
+# Handling optional DeepFace due to frequent TF/Protobuf conflicts
+try:
+    from deepface import DeepFace
+    DEEPFACE_AVAILABLE = True
+except ImportError:
+    print("[WARNING] DeepFace could not be imported (dependency issue?). Running in HSEmotion-only mode.")
+    DEEPFACE_AVAILABLE = False
+except Exception as e:
+    print(f"[WARNING] DeepFace import crashed: {e}. Running in HSEmotion-only mode.")
+    DEEPFACE_AVAILABLE = False
 
 # =============================================================================
 # CONFIG (defaults, override possible via config.yaml)
@@ -423,9 +434,15 @@ class DeepFaceEmotionDetector:
     def __init__(self, detector_backend: str = DEEPFACE_DETECTOR_BACKEND, enforce_detection: bool = DEEPFACE_ENFORCE_DETECTION):
         self.detector_backend = detector_backend
         self.enforce_detection = enforce_detection
-        print(f"[DeepFaceEmotionDetector] Ready (backend={detector_backend}, enforce={enforce_detection})")
+        if DEEPFACE_AVAILABLE:
+            print(f"[DeepFaceEmotionDetector] Ready (backend={detector_backend}, enforce={enforce_detection})")
+        else:
+            print("[DeepFaceEmotionDetector] DISABLED (DeepFace module not available)")
 
     def analyze_once(self, img_bgr: np.ndarray) -> Tuple[Optional[str], float]:
+        if not DEEPFACE_AVAILABLE:
+            return None, 0.0
+            
         if img_bgr is None or img_bgr.size == 0:
             return None, 0.0
 
@@ -449,6 +466,9 @@ class DeepFaceEmotionDetector:
         return dominant, conf
 
     def analyze(self, img_bgr: np.ndarray, use_tta: bool = False) -> Tuple[Optional[str], float]:
+        if not DEEPFACE_AVAILABLE:
+            return None, 0.0
+
         if not use_tta:
             try:
                 return self.analyze_once(img_bgr)
@@ -479,7 +499,7 @@ class HSEmotionDetector:
         print("[HSEmotionDetector] Chargement du modèle HSEmotion...")
         from hsemotion.facial_emotions import HSEmotionRecognizer
         self.model = HSEmotionRecognizer(model_name="enet_b0_8_best_vgaf", device=device)
-        print("[HSEmotionDetector] Modèle chargé ✅")
+        print("[HSEmotionDetector] Modèle chargé")
 
     def analyze_once(self, img_bgr: np.ndarray) -> Tuple[Optional[str], float]:
         if img_bgr is None or img_bgr.size == 0:
@@ -596,13 +616,19 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
         if not img_files:
             continue
 
-        if dir_fully_processed(rel_dir, img_files, master_results):
-            print(f"[SKIP] Dossier déjà analysé (master complet): {rel_dir}")
+        # Check if local output exists
+        base_dir = "root" if rel_dir == "." else rel_dir
+        local_out_exists = (Path(output_root) / base_dir / "latest" / "analyzed_emotions.json").exists()
+
+        if dir_fully_processed(rel_dir, img_files, master_results) and local_out_exists:
+            print(f"[SKIP] Dossier déjà analysé (master complet + output présent): {rel_dir}")
             continue
 
         for filename in img_files:
             rel_path = filename if rel_dir == "." else os.path.join(rel_dir, filename)
-            if rel_path in master_results:
+            # IMPORTANT: Ne sauter que si on a déjà le résultat au global ET que le fichier local existe.
+            # Sinon, on doit régénérer le fichier local.
+            if rel_path in master_results and local_out_exists:
                 continue
 
             frame_index = parse_frame_index(filename)
@@ -629,7 +655,7 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
             ))
 
     if not tasks:
-        print("Aucune nouvelle image à analyser. Tout est déjà à jour ✅")
+        print("Aucune nouvelle image à analyser. Tout est déjà à jour")
         return
 
     tasks.sort(key=lambda t: (t.rel_dir, t.identity_id, t.frame_index, t.filename))
@@ -816,10 +842,10 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
         with open(final_json_path, mode="w", encoding="utf-8") as f:
             json.dump(final_only, f, indent=4, ensure_ascii=False)
 
-        print(f"{len(rows)} faces analysées pour le dossier '{rel_dir}' ✅")
-        print(f"→ CSV :        {csv_path}")
-        print(f"→ JSON :       {json_path}")
-        print(f"→ JSON final : {final_json_path}")
+        print(f"{len(rows)} faces analysées pour le dossier '{rel_dir}'")
+        print(f"-> CSV :        {csv_path}")
+        print(f"-> JSON :       {json_path}")
+        print(f"-> JSON final : {final_json_path}")
 
     save_master_json(master_results, master_json_path)
     print(f"Master JSON mis à jour : {master_json_path}")
