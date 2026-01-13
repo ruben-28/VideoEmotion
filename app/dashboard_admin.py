@@ -50,13 +50,13 @@ st.markdown(
         
         /* Video width limit */
         .video-wrap {
-            max-width: 831px;  /* ~22 cm */
+            max-width: 900px;  /* ~22 cm */
             width: 100%;
-            height: 340px;     /* ~9 cm */
+            height: 450px;     /* ~9 cm */
             margin: 0 auto;
             overflow: hidden;  /* Ensure content respects the height */
             display: flex;     /* Center content if needed */
-            align_items: center;
+            align-items: center;
         }
         .video-wrap video {
             width: 100% !important;

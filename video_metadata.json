@@ -260,8 +260,65 @@
       "pipeline_config": null,
       "stats": null,
       "file_size_bytes": 2181409
+    },
+    "e_offline": {
+      "id": "e_offline",
+      "name": "e",
+      "mode": "offline",
+      "status": "processed",
+      "created_at": "2026-01-14T01:25:12.377987",
+      "processed_at": "2026-01-14T01:28:23.307099",
+      "file_paths": {
+        "video": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\videos\\e.mp4",
+        "frames": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\extracted_frames\\e",
+        "faces": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces\\e",
+        "results": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\emotion_results\\e",
+        "reports": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\reports\\offline\\e",
+        "visualizations": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\visualizations\\e"
+      },
+      "pipeline_config": null,
+      "stats": null,
+      "file_size_bytes": 2181409
+    },
+    "f_offline": {
+      "id": "f_offline",
+      "name": "f",
+      "mode": "offline",
+      "status": "partial",
+      "created_at": "2026-01-14T01:25:12.377987",
+      "processed_at": null,
+      "file_paths": {
+        "video": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\videos\\f.mp4",
+        "frames": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\extracted_frames\\f",
+        "faces": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces\\f",
+        "results": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\emotion_results\\f",
+        "reports": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\reports\\offline\\f",
+        "visualizations": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\visualizations\\f"
+      },
+      "pipeline_config": null,
+      "stats": null,
+      "file_size_bytes": 2181409
+    },
+    "e_h264_offline": {
+      "id": "e_h264_offline",
+      "name": "e_h264",
+      "mode": "offline",
+      "status": "unprocessed",
+      "created_at": "2026-01-14T01:28:48.468822",
+      "processed_at": null,
+      "file_paths": {
+        "video": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\videos\\e_h264.mp4",
+        "frames": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\extracted_frames\\e_h264",
+        "faces": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\data\\detected_faces\\e_h264",
+        "results": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\emotion_results\\e_h264",
+        "reports": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\reports\\offline\\e_h264",
+        "visualizations": "C:\\Users\\ruben\\Desktop\\VideoEmotion\\output\\visualizations\\e_h264"
+      },
+      "pipeline_config": null,
+      "stats": null,
+      "file_size_bytes": 1569151
     }
   },
   "trash": {},
-  "last_updated": "2026-01-14T01:08:07.114462"
+  "last_updated": "2026-01-14T01:31:16.923160"
 }

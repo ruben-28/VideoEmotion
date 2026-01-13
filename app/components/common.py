@@ -273,6 +273,8 @@ def pick_first_existing(candidates: List[Path]) -> Optional[Path]:
 # =============================================================================
 # Rendering
 # =============================================================================
+import base64
+
 def render_video_block(video_path: Optional[Path], auto_transcode: bool):
     st.subheader("Video")
 
@@ -309,9 +311,21 @@ def render_video_block(video_path: Optional[Path], auto_transcode: bool):
     st.markdown(f"<div class='muted'>{meta}</div>", unsafe_allow_html=True)
 
     try:
-        st.markdown('<div class="video-wrap">', unsafe_allow_html=True)
-        st.video(read_video_bytes(use_path))
-        st.markdown("</div>", unsafe_allow_html=True)
+        video_bytes = read_video_bytes(use_path)
+        video_b64 = base64.b64encode(video_bytes).decode()
+        mime_type = "video/mp4" # Default assumption
+        if use_path.suffix.lower() == ".webm": mime_type = "video/webm"
+        
+        # Raw HTML video to strictly respect CSS dimensions
+        video_html = f"""
+            <div class="video-wrap">
+                <video controls controlsList="nodownload" style="width:100%; height:100%; object-fit:contain;">
+                    <source src="data:{mime_type};base64,{video_b64}" type="{mime_type}">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+        """
+        st.markdown(video_html, unsafe_allow_html=True)
     except Exception as e:
         st.error(f"Video display error: {e}")
 

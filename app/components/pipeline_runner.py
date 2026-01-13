@@ -331,13 +331,65 @@ def validate_outputs(video_name: str, fps: int) -> dict:
 def render_pipeline_runner():
     st.header("⚙️ Pipeline Runner")
 
-    video_input = st.text_input(
-        "Video Name",
-        value=st.session_state.get("pipeline_video", ""),
-        placeholder="e.g., gemini2.mp4",
-        help="Enter the video filename (must exist in data/videos/)",
-        key="pipeline_video_input",
-    )
+    # Fetch videos for dropdown
+    videos = []
+    try:
+        resp = requests.get(f"{API_BASE}/api/videos", timeout=5)
+        if resp.ok:
+            videos = resp.json().get("videos", [])
+    except Exception:
+        pass
+
+    # Group videos by status
+    processed = sorted([v["name"] for v in videos if v.get("status") == "processed"])
+    partial = sorted([v["name"] for v in videos if v.get("status") == "partial"])
+    unprocessed = sorted([v["name"] for v in videos if v.get("status") == "unprocessed"])
+
+    # Create categorized options
+    options = []
+    if unprocessed:
+        options.append("--- Unprocessed ---")
+        options.extend(unprocessed)
+    if partial:
+        options.append("--- Partially Processed ---")
+        options.extend(partial)
+    if processed:
+        options.append("--- Processed ---")
+        options.extend(processed)
+
+    # Allow custom input fallback if needed or just use the list
+    # The user asked to replace the input field with a dropdown.
+    
+    if not options:
+        # Fallback to text input if API fails or no videos
+        video_input = st.text_input(
+            "Video Name",
+            value=st.session_state.get("pipeline_video", ""),
+            placeholder="e.g., gemini2.mp4",
+            help="Enter the video filename (must exist in data/videos/)",
+            key="pipeline_video_input",
+        )
+    else:
+        # Selectbox with categories
+        selected_option = st.selectbox(
+            "Select Video",
+            options=options,
+            index=0,
+            key="pipeline_video_select"
+        )
+        
+        # Handle category headers selection
+        if selected_option and selected_option.startswith("---"):
+            st.warning("Please select a valid video file below the category header.")
+            video_input = ""
+        else:
+            video_input = selected_option
+            # Sync with session state for persistence
+            st.session_state["pipeline_video"] = video_input
+            
+    # Show selected video info if valid
+    if video_input:
+        st.info(f"Selected: {video_input}")
 
     st.markdown("### Pipeline Configuration")
     col1, col2 = st.columns(2)
