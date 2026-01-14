@@ -1,14 +1,66 @@
+# --- Project Data & Output ---
 /data
-/emotion_analysis_results.csv
 /output
-/venv
-/mp_env
-/models 
-/venv_gpu
+/trash
+/models
+/emotion_analysis_results.csv
 
+# --- Local State & Logs ---
+/video_metadata.json
+/pipeline_jobs.json
+*.log
+debug_*.py
+debug_*.txt
+temp_*.py
 
-# Python cache
+# --- Python ---
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Environments ---
+/venv
+/venv_gpu
+/mp_env
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --- IDE & System ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Misc ---
 *.zip
+*.tar.gz
+*.rar
+
 

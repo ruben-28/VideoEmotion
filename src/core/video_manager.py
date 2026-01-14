@@ -183,6 +183,19 @@ class VideoManager:
             file_size_bytes = video_path.stat().st_size
         except:
             file_size_bytes = None
+            
+        # Load stats from summary.json if available
+        stats = None
+        if reports_exist:
+            try:
+                # Scan recursively for summary.json (handles extra levels like frames_fps5)
+                summaries = list(reports_dir.rglob("summary.json"))
+                if summaries:
+                    latest_summary = max(summaries, key=lambda p: p.stat().st_mtime)
+                    with open(latest_summary, "r", encoding="utf-8") as f:
+                        stats = json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to load stats for {video_name}: {e}")
         
         return VideoMetadata(
             id=video_id,
@@ -193,6 +206,7 @@ class VideoManager:
             processed_at=processed_at,
             file_paths=file_paths,
             file_size_bytes=file_size_bytes,
+            stats=stats,
         )
     
     def _scan_realtime_sessions(self) -> List[VideoMetadata]:
@@ -246,6 +260,15 @@ class VideoManager:
         except:
             file_size_bytes = None
         
+        
+        # Calculate stats from realtime_emotions.json
+        stats = None
+        if emotions_json.exists():
+            try:
+                stats = self._calculate_realtime_stats(emotions_json)
+            except Exception as e:
+                logger.warning(f"Failed to calculate stats for realtime session {session_name}: {e}")
+
         return VideoMetadata(
             id=video_id,
             name=session_name,
@@ -255,7 +278,81 @@ class VideoManager:
             processed_at=processed_at,
             file_paths=file_paths,
             file_size_bytes=file_size_bytes,
+            stats=stats,
         )
+
+    def _calculate_realtime_stats(self, json_path: Path) -> Dict:
+        """Calculate stats from a realtime_emotions.json file"""
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        records = data.get("records", [])
+        if not records:
+            return None
+            
+        # 1. Normalize and aggregate
+        from collections import Counter, defaultdict
+        
+        emotion_counts = Counter()
+        timeline_buckets = defaultdict(Counter)
+        
+        valid_records = 0
+        
+        for rec in records:
+            emo = rec.get("emotion")
+            if not emo:
+                continue
+                
+            # Normalize to lowercase
+            emo = emo.strip().lower()
+            
+            emotion_counts[emo] += 1
+            valid_records += 1
+            
+            # Bucket by second
+            # time_ms is typically absolute or relative? 
+            # The 't_rel_ms' seems to be relative to start based on cat output (50000ms = 50s)
+            # Use t_rel_ms if available, else time_ms (which seemed large in cat output, likely epoch)
+            # Actually, looking at cat output: time_ms: 2439998 (~40 mins?), t_rel_ms: 50000 (50s)
+            # We should probably use t_rel_ms for the timeline relative to video start.
+            
+            t_ms = rec.get("t_rel_ms", rec.get("time_ms", 0))
+            if t_ms is None: t_ms = 0
+                
+            sec = int(t_ms / 1000)
+            timeline_buckets[sec][emo] += 1
+            
+        if valid_records == 0:
+            return None
+            
+        # 2. Global Distribution
+        global_distribution = {k: v / valid_records for k, v in emotion_counts.items()}
+        dominant_emotion = emotion_counts.most_common(1)[0][0]
+        
+        # 3. Timeline
+        timeline = []
+        if timeline_buckets:
+            max_sec = max(timeline_buckets.keys())
+            for s in range(max_sec + 1):
+                counts = timeline_buckets.get(s, Counter())
+                total = sum(counts.values())
+                if total > 0:
+                    dist = {k: round(v / total, 3) for k, v in counts.items()}
+                else:
+                    dist = {}
+                
+                timeline.append({
+                    "timestamp": s,
+                    "emotions": dist
+                })
+        
+        return {
+            "global_distribution": global_distribution,
+            "dominant_emotion": dominant_emotion,
+            "timeline": timeline,
+            # Add avg_emotion if needed, or simple placeholders
+            "avg_emotion": global_distribution 
+        }
     
     def get_video(self, video_id: str) -> Optional[VideoMetadata]:
         """Get video by ID"""
@@ -358,7 +455,35 @@ class VideoManager:
             "unprocessed": unprocessed,
             "total_size_bytes": total_size,
             "total_size_mb": round(total_size / (1024 * 1024), 2),
+            "emotion_distribution": self._calculate_global_emotions(videos)
         }
+
+    def _calculate_global_emotions(self, videos: List[VideoMetadata]) -> Dict[str, float]:
+        """Calculate global emotion distribution weighted by video duration"""
+        from collections import defaultdict
+        
+        weighted_sums = defaultdict(float)
+        total_weight = 0.0
+        
+        for v in videos:
+            if not v.stats or not v.stats.get("global_distribution"):
+                continue
+            
+            # Use total_frames as weight, default to 1 if missing but stats exist
+            weight = v.stats.get("total_frames", 0)
+            if weight == 0: 
+                continue
+                
+            dist = v.stats["global_distribution"]
+            for emo, score in dist.items():
+                weighted_sums[emo] += score * weight
+            
+            total_weight += weight
+            
+        if total_weight == 0:
+            return {}
+            
+        return {k: round(v / total_weight, 4) for k, v in weighted_sums.items()}
     
     def __del__(self):
         """Cleanup executor on deletion"""

@@ -114,7 +114,7 @@ def choose_emotion(rec: Dict[str, Any], prefer_smoothed: bool = True) -> str:
     for k in keys:
         v = rec.get(k, None)
         if isinstance(v, str) and v.strip():
-            return v.strip()
+            return v.strip().lower()
 
     return "Unknown"
 
@@ -364,6 +364,55 @@ def build_enriched_records(master: Dict[str, Dict[str, Any]], prefer_smoothed: b
     return per_person
 
 
+
+def compute_timeline(per_person: Dict[str, List[Dict[str, Any]]], fps_approx: int = 5) -> List[Dict[str, Any]]:
+    """Compute aggregated emotion timeline (global) by second"""
+    # Collect all items
+    all_items = []
+    for items in per_person.values():
+        all_items.extend(items)
+    
+    if not all_items:
+        return []
+
+    # Bucket by second
+    buckets: Dict[int, Counter] = defaultdict(Counter)
+    
+    for item in all_items:
+        t_ms = item.get("time_ms", -1)
+        if t_ms < 0: 
+            # Fallback to frame index if time not available
+            idx = item.get("frame_index", -1)
+            if idx >= 0:
+                t_ms = (idx / fps_approx) * 1000
+            else:
+                continue
+        
+        sec = int(t_ms / 1000)
+        buckets[sec][item["emotion"]] += 1
+    
+    # Format outcome
+    timeline = []
+    if not buckets:
+        return []
+
+    max_sec = max(buckets.keys())
+    for s in range(max_sec + 1):
+        counts = buckets.get(s, Counter())
+        total = sum(counts.values())
+        if total > 0:
+            dist = {k: round(v / total, 3) for k, v in counts.items()}
+        else:
+            dist = {}
+        
+        timeline.append({
+            "timestamp": s,
+            "emotions": dist
+        })
+        
+    return timeline
+
+
 def run_one_video(
     group_label: str,
     files: List[Path],
@@ -408,6 +457,9 @@ def run_one_video(
         if items:
             people_summaries.append(summarize_person(items, pid))
 
+
+
+
     total_frames = sum(ps.n_frames for ps in people_summaries)
 
     global_counter = Counter()
@@ -415,6 +467,9 @@ def run_one_video(
         for it in items:
             global_counter[it["emotion"]] += 1
     global_dominant = global_counter.most_common(1)[0][0] if global_counter else "Unknown"
+    
+    # Compute timeline
+    timeline = compute_timeline(per_person)
 
     summary = {
         "session": group_label,
@@ -425,6 +480,7 @@ def run_one_video(
         "total_frames": total_frames,
         "global_dominant_emotion": global_dominant,
         "global_distribution": {k: (v / total_frames if total_frames else 0.0) for k, v in global_counter.items()},
+        "timeline": timeline,
         "people": [
             {
                 **asdict(ps),

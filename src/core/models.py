@@ -84,6 +84,7 @@ class TrashMetadata:
     original_video_id: str
     video_name: str
     mode: VideoMode
+    original_status: VideoStatus
     deleted_at: datetime
     original_paths: Dict[str, str]
     trash_paths: Dict[str, str]
@@ -96,6 +97,7 @@ class TrashMetadata:
             "original_video_id": self.original_video_id,
             "video_name": self.video_name,
             "mode": self.mode.value,
+            "original_status": self.original_status.value,
             "deleted_at": self.deleted_at.isoformat(),
             "original_paths": self.original_paths,
             "trash_paths": self.trash_paths,
@@ -110,6 +112,7 @@ class TrashMetadata:
             original_video_id=data["original_video_id"],
             video_name=data["video_name"],
             mode=VideoMode(data["mode"]),
+            original_status=VideoStatus(data.get("original_status", "unprocessed")),
             deleted_at=datetime.fromisoformat(data["deleted_at"]),
             original_paths=data["original_paths"],
             trash_paths=data["trash_paths"],

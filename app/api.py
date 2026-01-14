@@ -33,6 +33,10 @@ from core import (
     PipelineConfig,
 )
 
+from fastapi.staticfiles import StaticFiles
+
+# ... (existing imports)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="VideoEmotion API",
@@ -48,6 +52,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files
+app.mount("/static/videos", StaticFiles(directory=project_root / "data" / "videos"), name="videos")
+app.mount("/static/output", StaticFiles(directory=project_root / "output"), name="output")
 
 # Initialize managers
 video_manager = VideoManager(
@@ -74,6 +82,8 @@ class VideoResponse(BaseModel):
     created_at: str
     processed_at: Optional[str]
     file_size_mb: Optional[float]
+    video_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     stats: Optional[dict] = None
 
 class VideoListResponse(BaseModel):
@@ -85,6 +95,7 @@ class TrashItemResponse(BaseModel):
     trash_id: str
     video_name: str
     mode: str
+    original_status: str
     deleted_at: str
     size_mb: Optional[float]
 
@@ -112,6 +123,7 @@ class StatsResponse(BaseModel):
     unprocessed: int
     total_size_mb: float
     trash_stats: dict
+    emotion_distribution: Optional[dict] = None
 
 
 # ============================================================================
@@ -148,6 +160,20 @@ async def list_videos(
         # Convert to response format
         video_responses = []
         for v in paginated_videos:
+            # Determine video URL
+            viz_h264 = project_root / "output" / "visualizations" / v.name / f"{v.name}_annotated_h264.mp4"
+            viz_raw = project_root / "output" / "visualizations" / v.name / f"{v.name}_annotated_raw.mp4"
+            
+            if viz_h264.exists():
+                video_url = f"/static/output/visualizations/{v.name}/{v.name}_annotated_h264.mp4"
+            elif viz_raw.exists():
+                 video_url = f"/static/output/visualizations/{v.name}/{v.name}_annotated_raw.mp4"
+            else:
+                video_url = f"/static/videos/{v.name}/{v.name}.mp4"
+            
+            # Determine thumbnail URL
+            thumbnail_url = f"/static/output/thumbnails/{v.name}.jpg"
+
             video_responses.append(VideoResponse(
                 id=v.id,
                 name=v.name,
@@ -156,6 +182,8 @@ async def list_videos(
                 created_at=v.created_at.isoformat(),
                 processed_at=v.processed_at.isoformat() if v.processed_at else None,
                 file_size_mb=round(v.file_size_bytes / (1024 * 1024), 2) if v.file_size_bytes else None,
+                video_url=video_url,
+                thumbnail_url=thumbnail_url,
                 stats=v.stats
             ))
         
@@ -209,6 +237,20 @@ async def get_video(video_id: str):
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
+    # Determine video URL
+    viz_h264 = project_root / "output" / "visualizations" / video.name / f"{video.name}_annotated_h264.mp4"
+    viz_raw = project_root / "output" / "visualizations" / video.name / f"{video.name}_annotated_raw.mp4"
+    
+    if viz_h264.exists():
+        video_url = f"/static/output/visualizations/{video.name}/{video.name}_annotated_h264.mp4"
+    elif viz_raw.exists():
+        video_url = f"/static/output/visualizations/{video.name}/{video.name}_annotated_raw.mp4"
+    else:
+        video_url = f"/static/videos/{video.name}/{video.name}.mp4"
+    
+    # Determine thumbnail URL
+    thumbnail_url = f"/static/output/thumbnails/{video.name}.jpg"
+
     return VideoResponse(
         id=video.id,
         name=video.name,
@@ -217,6 +259,8 @@ async def get_video(video_id: str):
         created_at=video.created_at.isoformat(),
         processed_at=video.processed_at.isoformat() if video.processed_at else None,
         file_size_mb=round(video.file_size_bytes / (1024 * 1024), 2) if video.file_size_bytes else None,
+        video_url=video_url,
+        thumbnail_url=thumbnail_url,
         stats=video.stats
     )
 
@@ -281,6 +325,7 @@ async def list_trash():
                 trash_id=item.trash_id,
                 video_name=item.video_name,
                 mode=item.mode.value,
+                original_status=item.original_status.value,
                 deleted_at=item.deleted_at.isoformat(),
                 size_mb=round(item.size_bytes / (1024 * 1024), 2) if item.size_bytes else None
             ))
@@ -497,7 +542,8 @@ async def get_stats():
             partial=video_stats["partial"],
             unprocessed=video_stats["unprocessed"],
             total_size_mb=video_stats["total_size_mb"],
-            trash_stats=trash_stats
+            trash_stats=trash_stats,
+            emotion_distribution=video_stats.get("emotion_distribution")
         )
     
     except Exception as e:
