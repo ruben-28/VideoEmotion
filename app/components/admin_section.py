@@ -330,7 +330,16 @@ def render_video_detail(video: dict):
         
         # Render video player
         if video_path and video_path.exists():
-            render_video_block(video_path, auto_transcode=True)
+            # Check if this is a visualization or the original file
+            is_visualization = "visualizations" in str(video_path.parent)
+            
+            if is_visualization:
+                render_video_block(video_path, auto_transcode=True)
+            else:
+                st.info("ℹ️ No visualization generated for this video.")
+                with st.expander("View Original Video (Raw Input)"):
+                    st.caption("Note: This will transcode the original video for browser playback.")
+                    render_video_block(video_path, auto_transcode=True)
         else:
             st.info("📹 Video file not found")
             if mode == "offline":

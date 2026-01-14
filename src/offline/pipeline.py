@@ -379,31 +379,50 @@
 #         print(f"[DEBUG] Exists? {p.exists()}")
 
 #         if not p.exists():
-#             alt = (videos_dir / Path(args.video).name).resolve()
-#             print(f"[DEBUG] Video path resolve attempt 2 (alt): {alt}")
-#             print(f"[DEBUG] Exists? {alt.exists()}")
-#             if alt.exists():
-#                 p = alt
-        
+#             # Check nested structure first: data/videos/name/name.mp4
+#             alt_nested = (videos_dir / Path(args.video).stem / Path(args.video).name).resolve()
+#             if alt_nested.exists():
+#                  p = alt_nested
+#             else:
+#                  # Check flat structure
+#                  alt = (videos_dir / Path(args.video).name).resolve()
+#                  if alt.exists():
+#                     p = alt
+#         
 #         if not p.exists():
 #             eprint(f"[FATAL] Video not found: {args.video} (tried: {p})")
 #             sys.exit(1)
 #         videos_to_process.append(p)
-
+# 
 #     elif args.all:
 #         if not videos_dir.exists():
 #             eprint(f"[FATAL] Video directory not found: {videos_dir}")
 #             sys.exit(1)
 
 #         exts = {".mp4", ".avi", ".mov", ".mkv"}
+#         
+#         # Scan nested folders
+#         for item in videos_dir.iterdir():
+#             if item.is_dir():
+#                 # Look for video file with same name inside
+#                 # Or any valid extension
+#                 found = False
+#                 for ext in exts:
+#                     cand = item / f"{item.name}{ext}"
+#                     if cand.exists():
+#                         videos_to_process.append(cand)
+#                         found = True
+#                         break
+#         
+#         # Scan flat files (legacy)
 #         for f in videos_dir.iterdir():
 #             if f.is_file() and f.suffix.lower() in exts:
 #                 videos_to_process.append(f)
-
+# 
 #         if not videos_to_process:
 #             eprint(f"[WARN] No video files found in {videos_dir}")
 #             sys.exit(0)
-
+# 
 #         print(f"[BATCH] Found {len(videos_to_process)} videos in {videos_dir}")
 
 #     for vid in videos_to_process:
@@ -653,6 +672,7 @@ def run_pipeline_for_video(
     # extracted: data/extracted_frames/<video>/frames_fpsX/
     # detected : data/detected_faces/<video>/frames_fpsX/
     # emotion  : output/emotion_results/<video>/frames_fpsX/
+    # Note: resolved paths make creating these safe.
     extracted_video_root = extracted_root / video_name / frames_dir
     detected_video_root = detected_root / video_name / frames_dir
     emotion_video_root = emotion_out_root / video_name / frames_dir
@@ -760,6 +780,40 @@ def run_pipeline_for_video(
     # 5) Visualize
     if args.no_visualize:
         print("[SKIP] Step 5 (Visualize)")
+        # Ensure H.264 browser-compatible video exists even if visualization is skipped
+        # Output: videos/<video>/<video>_h264_unannotated.mp4
+        
+        # Determine path
+        src_vid = video_path
+        if not src_vid.exists():
+            # If video_path was just a name or not found, try to resolve via standard lookup
+             # (though video_path should stem from loop above, let's use the robust resolve if needed)
+             from offline.utils import resolve_source_video
+             src_vid = resolve_source_video(videos_dir, video_name)
+        
+        if src_vid and src_vid.exists():
+             # Define target
+             # Follow requested structure: videos/<video_name>/<video_name>_h264_unannotated.mp4
+             # We assume src_vid is likely in videos/<video_name>/... or videos/...
+             # Safest target is:
+             target_h264 = videos_dir / video_name / f"{video_name}_h264_unannotated.mp4"
+             
+             # If input is already H.264 (e.g. mp4), we might not need to transcode, 
+             # BUT the user asked for this specific file structure to guarantee playback.
+             # We will create it if it doesn't exist.
+             
+             if not target_h264.exists():
+                 print(f"[H264] Generating unannotated H.264 for playback: {target_h264.name}")
+                 target_h264.parent.mkdir(parents=True, exist_ok=True)
+                 from offline.utils import transcode_to_h264
+                 ok, msg = transcode_to_h264(src_vid, target_h264)
+                 if ok:
+                     print(f"✅ H.264 Generated: {target_h264}")
+                 else:
+                     eprint(f"[WARN] Failed to generate H.264: {msg}")
+             else:
+                 print(f"[H264] Browser-ready video already exists: {target_h264.name}")
+
     else:
         run_visualize_for_video(
             project_root=project_root,
@@ -823,9 +877,15 @@ def main():
             p = (project_root / p).resolve()
 
         if not p.exists():
-            alt = (videos_dir / Path(args.video).name).resolve()
-            if alt.exists():
-                p = alt
+            # Check nested structure first: data/videos/name/name.mp4
+            alt_nested = (videos_dir / Path(args.video).stem / Path(args.video).name).resolve()
+            if alt_nested.exists():
+                 p = alt_nested
+            else:
+                 # Check flat structure
+                 alt = (videos_dir / Path(args.video).name).resolve()
+                 if alt.exists():
+                    p = alt
 
         if not p.exists():
             eprint(f"[FATAL] Video not found: {args.video} (tried: {p})")
@@ -838,6 +898,21 @@ def main():
             sys.exit(1)
 
         exts = {".mp4", ".avi", ".mov", ".mkv"}
+        
+        # Scan nested folders
+        for item in videos_dir.iterdir():
+            if item.is_dir():
+                # Look for video file with same name inside
+                # Or any valid extension
+                found = False
+                for ext in exts:
+                    cand = item / f"{item.name}{ext}"
+                    if cand.exists():
+                        videos_to_process.append(cand)
+                        found = True
+                        break
+        
+        # Scan flat files (legacy)
         for f in videos_dir.iterdir():
             if f.is_file() and f.suffix.lower() in exts:
                 videos_to_process.append(f)

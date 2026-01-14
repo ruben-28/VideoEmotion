@@ -100,8 +100,36 @@ class VideoManager:
         
         video_extensions = {".mp4", ".avi", ".mov", ".mkv"}
         
+        # Scan subdirectories (new structure)
+        for item in videos_dir.iterdir():
+            if item.is_dir():
+                # Look for video file with same name inside
+                # e.g. videos/myvideo/myvideo.mp4
+                possible_video = item / f"{item.name}.mp4" # Try mp4 first
+                
+                # Search for any valid extension if specific logic is needed, 
+                # but enforcing name match is good practice.
+                found_video = None
+                for ext in video_extensions:
+                    candidate = item / f"{item.name}{ext}"
+                    if candidate.exists():
+                        found_video = candidate
+                        break
+                
+                if found_video:
+                    try:
+                        video_meta = self._scan_offline_video(found_video)
+                        videos.append(video_meta)
+                    except Exception as e:
+                        logger.error(f"Failed to scan {found_video.name}: {e}")
+
+        # Scan root files (legacy structure)
         for video_file in videos_dir.iterdir():
             if video_file.is_file() and video_file.suffix.lower() in video_extensions:
+                # Ignore generated files in root
+                if "_h264" in video_file.stem:
+                    continue
+                    
                 try:
                     video_meta = self._scan_offline_video(video_file)
                     videos.append(video_meta)
@@ -127,9 +155,10 @@ class VideoManager:
         faces_exist = faces_dir.exists() and any(faces_dir.iterdir())
         results_exist = results_dir.exists() and any(results_dir.iterdir())
         reports_exist = reports_dir.exists() and any(reports_dir.iterdir())
+        viz_exist = viz_dir.exists() and any(viz_dir.iterdir())
         
         # Determine status
-        if all([frames_exist, faces_exist, results_exist, reports_exist]):
+        if all([frames_exist, faces_exist, results_exist, reports_exist, viz_exist]):
             status = VideoStatus.PROCESSED
             processed_at = datetime.fromtimestamp(reports_dir.stat().st_mtime)
         elif any([frames_exist, faces_exist, results_exist]):

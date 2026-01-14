@@ -86,7 +86,13 @@ class PathResolver:
                 viz_dir / f"{video_name}_annotated_raw.mp4",
                 viz_dir / f"{video_name}_annotated_bbox_h264.mp4",
                 viz_dir / f"{video_name}_annotated_bbox.mp4",
-                # Fallback to original
+                # New structure
+                self.data_videos / video_name / f"{video_name}_h264_unannotated.mp4",
+                self.data_videos / video_name / f"{video_name}.mp4",
+                self.data_videos / video_name / f"{video_name}.avi",
+                self.data_videos / video_name / f"{video_name}.mov",
+                self.data_videos / video_name / f"{video_name}.mkv",
+                # Fallback to legacy structure
                 self.data_videos / f"{video_name}.mp4",
                 self.data_videos / f"{video_name}.avi",
                 self.data_videos / f"{video_name}.mov",

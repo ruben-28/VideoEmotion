@@ -76,3 +76,41 @@ def maybe_find_bboxes_json(detected_video_root: Path, fps: int) -> Optional[Path
     detected_video_root = Path(detected_video_root)
     p = detected_video_root / frames_dir_name_from_fps(fps) / "bboxes.json"
     return p if p.exists() else None
+
+
+import subprocess
+from typing import Tuple
+
+def ffmpeg_available() -> bool:
+    try:
+        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        return True
+    except Exception:
+        return False
+
+
+def transcode_to_h264(src: Path, dst: Path) -> Tuple[bool, str]:
+    """
+    Create a browser-friendly mp4 (H264 yuv420p).
+    Returns (ok, message).
+    """
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(src),
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "baseline",
+            "-level", "3.0",
+            "-movflags", "+faststart",
+            "-an",
+            str(dst),
+        ]
+        # Run without creating a window on Windows if possible, but subprocess.PIPE usually hides it.
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        ok = (proc.returncode == 0) and dst.exists()
+        msg = proc.stderr[-1500:] if proc.stderr else ""
+        return ok, msg
+    except Exception as e:
+        return False, str(e)
+

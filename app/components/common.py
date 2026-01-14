@@ -65,37 +65,18 @@ def read_video_bytes(video_path: Path) -> bytes:
         return f.read()
 
 
-def ffmpeg_available() -> bool:
-    try:
-        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-        return True
-    except Exception:
+# =============================================================================
+# Helpers using src.offline.utils
+# =============================================================================
+try:
+    from offline.utils import transcode_to_h264, ffmpeg_available
+except ImportError:
+    # Fallback if python path not setup correctly for "offline" module
+    def ffmpeg_available() -> bool:
         return False
-
-
-def transcode_to_h264(src: Path, dst: Path) -> Tuple[bool, str]:
-    """
-    Create a browser-friendly mp4 (H264 yuv420p).
-    Returns (ok, message).
-    """
-    try:
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", str(src),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-profile:v", "baseline",
-            "-level", "3.0",
-            "-movflags", "+faststart",
-            "-an",
-            str(dst),
-        ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        ok = (proc.returncode == 0) and dst.exists()
-        msg = proc.stderr[-1500:] if proc.stderr else ""
-        return ok, msg
-    except Exception as e:
-        return False, str(e)
+    
+    def transcode_to_h264(src: Path, dst: Path) -> Tuple[bool, str]:
+        return False, "ImportError: src.offline.utils not found"
 
 
 # =============================================================================
@@ -245,10 +226,13 @@ def guess_offline_video_candidates(selected_session_label: str) -> List[Path]:
         # preferred
         per_dir / f"{video_name}_annotated_h264.mp4",
         per_dir / f"{video_name}_annotated_raw.mp4",
-        # fallbacks
-        per_dir / f"{video_name}_annotated_bbox_h264.mp4",
         per_dir / f"{video_name}_annotated_bbox.mp4",
-        # original input as last resort
+        # original input (nested first)
+        Path("data/videos") / video_name / f"{video_name}.mp4",
+        Path("data/videos") / video_name / f"{video_name}.avi",
+        Path("data/videos") / video_name / f"{video_name}.mov",
+        Path("data/videos") / video_name / f"{video_name}.mkv",
+        # original input (legacy fallback)
         Path("data/videos") / f"{video_name}.mp4",
         Path("data/videos") / f"{video_name}.avi",
         Path("data/videos") / f"{video_name}.mov",
