@@ -9,8 +9,6 @@
 /video_metadata.json
 /pipeline_jobs.json
 *.log
-debug_*.py
-debug_*.txt
 temp_*.py
 
 # --- Python ---

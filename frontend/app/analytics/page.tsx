@@ -23,6 +23,10 @@ interface Stats {
     partial: number;
     unprocessed: number;
     total_size_mb: number;
+    trash_stats?: {
+        total_items: number;
+        total_size_mb: number;
+    };
     emotion_distribution?: Record<string, number>;
 }
 
@@ -65,9 +69,11 @@ export default function AnalyticsPage() {
                 setStats(statsData);
 
                 // Fetch All Videos for comparison
-                const videosRes = await fetch(`${API_BASE}/api/videos?per_page=100&status=processed`);
+                const videosRes = await fetch(`${API_BASE}/api/videos?per_page=100`);
                 const videosData = await videosRes.json();
-                setVideos(videosData.videos || []);
+                // Filter client-side to be robust against backend filter issues
+                const processed = (videosData.videos || []).filter((v: Video) => v.stats);
+                setVideos(processed);
 
             } catch (err) {
                 console.error("Failed to load analytics data", err);
@@ -162,8 +168,9 @@ export default function AnalyticsPage() {
                         </div>
                     </div>
 
+
                     {/* Summary Stats Cards */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 flex flex-col justify-center">
                             <span className="text-sm text-neutral-500">Processed Videos</span>
                             <span className="text-4xl font-bold mt-2">{stats?.processed}</span>
@@ -172,7 +179,20 @@ export default function AnalyticsPage() {
                             <span className="text-sm text-neutral-500">Total Size</span>
                             <span className="text-4xl font-bold mt-2">{(stats?.total_size_mb || 0).toFixed(1)} MB</span>
                         </div>
-                        <div className="col-span-2 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+                        <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 flex flex-col justify-center">
+                            <span className="text-sm text-neutral-500">Trash</span>
+                            <span className="text-4xl font-bold mt-2">
+                                {stats?.trash_stats?.total_items || 0}
+                                <span className="text-lg font-normal text-neutral-400 ml-2">
+                                    items
+                                </span>
+                            </span>
+                            <div className="text-xs text-neutral-400 mt-1">
+                                {(stats?.trash_stats?.total_size_mb || 0).toFixed(1)} MB recoverable
+                            </div>
+                        </div>
+                        <div className="col-span-1 md:col-span-3 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+
                             <h4 className="text-sm font-medium text-neutral-500 mb-4">Dominant Emotions Breakdown</h4>
                             <div className="space-y-3">
                                 {pieData.slice(0, 5).map((d) => (

@@ -3,7 +3,7 @@ FastAPI Backend for VideoEmotion Administration System.
 Provides REST API endpoints for video management, trash operations, and pipeline execution.
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
@@ -32,6 +32,12 @@ from core import (
     VideoStatus,
     PipelineConfig,
 )
+from app.dependencies import (
+    get_video_manager,
+    get_trash_manager,
+    get_stats_updater,
+    get_pipeline_executor,
+)
 
 from fastapi.staticfiles import StaticFiles
 
@@ -56,22 +62,6 @@ app.add_middleware(
 # Mount static files
 app.mount("/static/videos", StaticFiles(directory=project_root / "data" / "videos"), name="videos")
 app.mount("/static/output", StaticFiles(directory=project_root / "output"), name="output")
-
-# Initialize managers
-video_manager = VideoManager(
-    project_root=project_root,
-    metadata_path=project_root / "video_metadata.json"
-)
-trash_manager = TrashManager(
-    project_root=project_root,
-    trash_root=project_root / "trash"
-)
-stats_updater = StatsUpdater(
-    project_root=project_root
-)
-pipeline_executor = PipelineExecutor(
-    project_root=project_root
-)
 
 # Pydantic models for API
 class VideoResponse(BaseModel):
@@ -137,7 +127,8 @@ async def list_videos(
     sort_by: str = Query("created_at", description="Sort by: name, created_at, status"),
     sort_order: str = Query("desc", description="Sort order: asc, desc"),
     page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1, le=100)
+    per_page: int = Query(50, ge=1, le=100),
+    video_manager: VideoManager = Depends(get_video_manager)
 ):
     """List all active videos with optional filters"""
     try:
@@ -163,11 +154,14 @@ async def list_videos(
             # Determine video URL
             viz_h264 = project_root / "output" / "visualizations" / v.name / f"{v.name}_annotated_h264.mp4"
             viz_raw = project_root / "output" / "visualizations" / v.name / f"{v.name}_annotated_raw.mp4"
+            realtime_h264 = project_root / "output" / "realtime" / v.name / "session_h264.mp4"
             
             if viz_h264.exists():
                 video_url = f"/static/output/visualizations/{v.name}/{v.name}_annotated_h264.mp4"
             elif viz_raw.exists():
                  video_url = f"/static/output/visualizations/{v.name}/{v.name}_annotated_raw.mp4"
+            elif realtime_h264.exists():
+                 video_url = f"/static/output/realtime/{v.name}/session_h264.mp4"
             else:
                 video_url = f"/static/videos/{v.name}/{v.name}.mp4"
             
@@ -230,8 +224,11 @@ async def list_unprocessed_videos():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/videos/{video_id}")
-async def get_video(video_id: str):
+@app.get("/api/videos/{video_id}", response_model=VideoResponse)
+async def get_video(
+    video_id: str,
+    video_manager: VideoManager = Depends(get_video_manager)
+):
     """Get video details by ID"""
     video = video_manager.get_video(video_id)
     if not video:
@@ -240,11 +237,14 @@ async def get_video(video_id: str):
     # Determine video URL
     viz_h264 = project_root / "output" / "visualizations" / video.name / f"{video.name}_annotated_h264.mp4"
     viz_raw = project_root / "output" / "visualizations" / video.name / f"{video.name}_annotated_raw.mp4"
+    realtime_h264 = project_root / "output" / "realtime" / video.name / "session_h264.mp4"
     
     if viz_h264.exists():
         video_url = f"/static/output/visualizations/{video.name}/{video.name}_annotated_h264.mp4"
     elif viz_raw.exists():
         video_url = f"/static/output/visualizations/{video.name}/{video.name}_annotated_raw.mp4"
+    elif realtime_h264.exists():
+        video_url = f"/static/output/realtime/{video.name}/session_h264.mp4"
     else:
         video_url = f"/static/videos/{video.name}/{video.name}.mp4"
     
@@ -266,10 +266,13 @@ async def get_video(video_id: str):
 
 
 @app.post("/api/videos/scan")
-async def scan_videos(background_tasks: BackgroundTasks):
+async def scan_videos(
+    background_tasks: BackgroundTasks,
+    video_manager: VideoManager = Depends(get_video_manager)
+):
     """Trigger video scan to update inventory"""
     try:
-        background_tasks.add_task(video_manager.scan_videos)
+        background_tasks.add_task(video_manager.scan_videos_async)
         return {"message": "Video scan started", "status": "pending"}
     except Exception as e:
         logger.error(f"Failed to start video scan: {e}")
@@ -279,7 +282,13 @@ async def scan_videos(background_tasks: BackgroundTasks):
 
 
 @app.delete("/api/videos/{video_id}")
-async def delete_video(video_id: str, background_tasks: BackgroundTasks):
+async def delete_video(
+    video_id: str, 
+    background_tasks: BackgroundTasks,
+    video_manager: VideoManager = Depends(get_video_manager),
+    trash_manager: TrashManager = Depends(get_trash_manager),
+    stats_updater: StatsUpdater = Depends(get_stats_updater)
+):
     """Move video to trash"""
     video = video_manager.get_video(video_id)
     if not video:
@@ -290,7 +299,7 @@ async def delete_video(video_id: str, background_tasks: BackgroundTasks):
         trash_meta = trash_manager.move_to_trash(video)
         
         # Update video metadata
-        video_manager.delete_video_metadata(video_id)
+        video_manager.scan_videos()
         
         # Recalculate stats in background
         background_tasks.add_task(stats_updater.recalculate_all_stats)
@@ -314,7 +323,7 @@ async def delete_video(video_id: str, background_tasks: BackgroundTasks):
 # ============================================================================
 
 @app.get("/api/trash")
-async def list_trash():
+async def list_trash(trash_manager: TrashManager = Depends(get_trash_manager)):
     """List all items in trash"""
     try:
         trash_items = trash_manager.list_trash()
@@ -338,14 +347,20 @@ async def list_trash():
 
 
 @app.post("/api/trash/{trash_id}/restore")
-async def restore_video(trash_id: str, background_tasks: BackgroundTasks):
+async def restore_video(
+    trash_id: str, 
+    background_tasks: BackgroundTasks,
+    trash_manager: TrashManager = Depends(get_trash_manager),
+    video_manager: VideoManager = Depends(get_video_manager),
+    stats_updater: StatsUpdater = Depends(get_stats_updater)
+):
     """Restore video from trash"""
     try:
         success, original_video_id = trash_manager.restore_from_trash(trash_id)
         
         if success:
             # Re-scan to update metadata
-            background_tasks.add_task(video_manager.scan_videos)
+            background_tasks.add_task(video_manager.scan_videos_async)
             background_tasks.add_task(stats_updater.recalculate_all_stats)
             
             logger.info(f"Restored video: {trash_id}")
@@ -364,7 +379,10 @@ async def restore_video(trash_id: str, background_tasks: BackgroundTasks):
 
 
 @app.delete("/api/trash/{trash_id}")
-async def delete_permanently(trash_id: str):
+async def delete_permanently(
+    trash_id: str,
+    trash_manager: TrashManager = Depends(get_trash_manager)
+):
     """Permanently delete from trash"""
     try:
         size_bytes = trash_manager.delete_permanently(trash_id)
@@ -383,7 +401,9 @@ async def delete_permanently(trash_id: str):
 
 
 @app.post("/api/trash/empty")
-async def empty_trash():
+async def empty_trash(
+    trash_manager: TrashManager = Depends(get_trash_manager)
+):
     """Empty entire trash"""
     try:
         count, total_size = trash_manager.empty_trash()
@@ -406,7 +426,12 @@ async def empty_trash():
 # ============================================================================
 
 @app.post("/api/pipeline/run", response_model=PipelineJobResponse)
-async def run_pipeline(request: PipelineRunRequest, background_tasks: BackgroundTasks):
+async def run_pipeline(
+    request: PipelineRunRequest, 
+    background_tasks: BackgroundTasks,
+    pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor),
+    video_manager: VideoManager = Depends(get_video_manager)
+):
     """Start pipeline execution for a video"""
     try:
         # Create config from options
@@ -461,7 +486,10 @@ async def run_pipeline(request: PipelineRunRequest, background_tasks: Background
 
 
 @app.get("/api/pipeline/jobs/{job_id}", response_model=PipelineJobResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(
+    job_id: str,
+    pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor)
+):
     """Get pipeline job status"""
     job = pipeline_executor.get_job(job_id)
     if not job:
@@ -481,7 +509,10 @@ async def get_job_status(job_id: str):
 
 
 @app.get("/api/pipeline/jobs")
-async def list_jobs(limit: int = Query(50, ge=1, le=100)):
+async def list_jobs(
+    limit: int = Query(50, ge=1, le=100),
+    pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor)
+):
     """List recent pipeline jobs"""
     try:
         jobs = pipeline_executor.list_jobs(limit=limit)
@@ -508,7 +539,10 @@ async def list_jobs(limit: int = Query(50, ge=1, le=100)):
 
 
 @app.delete("/api/pipeline/jobs/{job_id}")
-async def cancel_job(job_id: str):
+async def cancel_job(
+    job_id: str,
+    pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor)
+):
     """Cancel a running pipeline job"""
     try:
         success = pipeline_executor.cancel_job(job_id)
@@ -528,7 +562,10 @@ async def cancel_job(job_id: str):
 # ============================================================================
 
 @app.get("/api/stats", response_model=StatsResponse)
-async def get_stats():
+async def get_stats(
+    video_manager: VideoManager = Depends(get_video_manager),
+    trash_manager: TrashManager = Depends(get_trash_manager)
+):
     """Get global statistics"""
     try:
         video_stats = video_manager.get_stats()
@@ -552,7 +589,10 @@ async def get_stats():
 
 
 @app.post("/api/stats/refresh")
-async def refresh_stats(background_tasks: BackgroundTasks):
+async def refresh_stats(
+    background_tasks: BackgroundTasks,
+    stats_updater: StatsUpdater = Depends(get_stats_updater)
+):
     """Force statistics recalculation"""
     try:
         background_tasks.add_task(stats_updater.recalculate_all_stats)
@@ -590,6 +630,12 @@ async def health_check():
 async def startup_event():
     """Run on application startup"""
     logger.info("VideoEmotion API starting up...")
+    
+    # Manually resolve dependencies for startup
+    # Since we removed global variables
+    # Note: get_video_manager uses lru_cache so it returns the singleton
+    video_manager = get_video_manager()
+    pipeline_executor = get_pipeline_executor()
     
     # Scan videos on startup
     try:
