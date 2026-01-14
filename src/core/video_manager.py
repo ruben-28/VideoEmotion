@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 class VideoManager:
     """Orchestrator for video management"""
     
-    def __init__(self, project_root: Path, metadata_path: Path):
+    def __init__(self, project_root: Path, metadata_path: Path, videos_dir: Path, realtime_dir: Path):
         self.project_root = Path(project_root)
         
         # Initialize services
         # In a pure DI world, these would be injected into __init__, 
         # but for this refactor step we instantiate them here to keep call signature compatible 
         # (until we fix api.py).
-        self.scanner = VideoScanner(project_root)
+        self.scanner = VideoScanner(videos_dir, realtime_dir)
         self.store = MetadataStore(metadata_path)
         self.stats_calculator = StatsCalculator()
         

@@ -10,13 +10,14 @@ class VideoScanner:
     """
     Responsible ONLY for scanning the filesystem and identifying video files.
     """
-    def __init__(self, project_root: Path):
-        self.project_root = Path(project_root)
+    def __init__(self, videos_dir: Path, realtime_dir: Path):
+        self.videos_dir = Path(videos_dir)
+        self.realtime_dir = Path(realtime_dir)
         self.video_extensions = {".mp4", ".avi", ".mov", ".mkv"}
 
     def scan_offline(self) -> List[Path]:
         """Scan data/videos for video files"""
-        videos_dir = self.project_root / "data" / "videos"
+        videos_dir = self.videos_dir
         found_videos = []
         
         if not videos_dir.exists():
@@ -48,7 +49,7 @@ class VideoScanner:
 
     def scan_realtime(self) -> List[Path]:
         """Scan output/realtime for session directories"""
-        realtime_dir = self.project_root / "output" / "realtime"
+        realtime_dir = self.realtime_dir
         found_sessions = []
         
         if not realtime_dir.exists():

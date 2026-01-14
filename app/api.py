@@ -38,6 +38,7 @@ from app.dependencies import (
     get_stats_updater,
     get_pipeline_executor,
 )
+from app.config import settings
 
 from fastapi.staticfiles import StaticFiles
 
@@ -60,7 +61,13 @@ app.add_middleware(
 )
 
 # Mount static files
-app.mount("/static/videos", StaticFiles(directory=project_root / "data" / "videos"), name="videos")
+app.mount("/static/videos", StaticFiles(directory=project_root / settings.paths.videos), name="videos")
+# Note: "output" handles both reports and realtime. Ideally mount specific subdirs or keep general if safe.
+# Given config tracks specific "realtime_output" and "emotion_results", we keep generic "output" mount 
+# or specific ones. Existing code assumes "/static/output/...".
+# Let's keep general "output" but ensure it uses the root output path if defined, 
+# or derive from one of the subpaths. config.yaml has outputs under "output/".
+# Let's assume project_root / "output" is safe for now, as config.yaml paths are relative to root usually.
 app.mount("/static/output", StaticFiles(directory=project_root / "output"), name="output")
 
 # Pydantic models for API
@@ -152,9 +159,9 @@ async def list_videos(
         video_responses = []
         for v in paginated_videos:
             # Determine video URL
-            viz_h264 = project_root / "output" / "visualizations" / v.name / f"{v.name}_annotated_h264.mp4"
-            viz_raw = project_root / "output" / "visualizations" / v.name / f"{v.name}_annotated_raw.mp4"
-            realtime_h264 = project_root / "output" / "realtime" / v.name / "session_h264.mp4"
+            viz_h264 = project_root / settings.paths.visualizations / v.name / f"{v.name}_annotated_h264.mp4"
+            viz_raw = project_root / settings.paths.visualizations / v.name / f"{v.name}_annotated_raw.mp4"
+            realtime_h264 = project_root / settings.paths.realtime_output / v.name / "session_h264.mp4"
             
             if viz_h264.exists():
                 video_url = f"/static/output/visualizations/{v.name}/{v.name}_annotated_h264.mp4"
@@ -235,9 +242,9 @@ async def get_video(
         raise HTTPException(status_code=404, detail="Video not found")
     
     # Determine video URL
-    viz_h264 = project_root / "output" / "visualizations" / video.name / f"{video.name}_annotated_h264.mp4"
-    viz_raw = project_root / "output" / "visualizations" / video.name / f"{video.name}_annotated_raw.mp4"
-    realtime_h264 = project_root / "output" / "realtime" / video.name / "session_h264.mp4"
+    viz_h264 = project_root / settings.paths.visualizations / video.name / f"{video.name}_annotated_h264.mp4"
+    viz_raw = project_root / settings.paths.visualizations / video.name / f"{video.name}_annotated_raw.mp4"
+    realtime_h264 = project_root / settings.paths.realtime_output / video.name / "session_h264.mp4"
     
     if viz_h264.exists():
         video_url = f"/static/output/visualizations/{video.name}/{video.name}_annotated_h264.mp4"

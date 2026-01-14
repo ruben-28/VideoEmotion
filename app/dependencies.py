@@ -15,13 +15,17 @@ PROJECT_ROOT = Path("c:/Users/ruben/Desktop/VideoEmotion")
 def get_project_root() -> Path:
     return PROJECT_ROOT
 
+from app.config import settings
+
 @lru_cache()
 def get_video_manager(
     root: Path = PROJECT_ROOT, # Hack to make it work without dependency chain for now
 ) -> VideoManager:
     return VideoManager(
         project_root=root,
-        metadata_path=root / "video_metadata.json"
+        metadata_path=root / "video_metadata.json",
+        videos_dir=root / settings.paths.videos,
+        realtime_dir=root / settings.paths.realtime_output
     )
 
 @lru_cache()

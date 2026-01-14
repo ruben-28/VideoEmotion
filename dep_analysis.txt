@@ -1,4 +1,0 @@
-=== CIRCULAR DEPENDENCIES ===
-None found.
-
-=== LAYER VIOLATIONS (Core importing App) ===

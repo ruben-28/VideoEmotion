@@ -122,6 +122,8 @@ paths:
   detected_faces: data/detected_faces
   emotion_results: output/emotion_results
   reports: output/reports/offline
+  realtime_output: output/realtime
+  visualizations: output/visualizations
 
 # =========================================================
 # Logging & Debug
@@ -131,8 +133,6 @@ logging:
   show_warnings: true
   show_progress: true
 
-# =========================================================
-# Runtime Settings
-# =========================================================
-runtime:
-  py_detect: "C:\\Users\\ruben\\Desktop\\VideoEmotion\\mp_env\\Scripts\\python.exe"
+#Runtime settings handled dynamically by PipelineExecutor
+#runtime:
+#  py_detect: "..."
