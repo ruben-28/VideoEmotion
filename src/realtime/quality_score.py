@@ -47,7 +47,7 @@ def score_quality(summary: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         "passed": {
             "A": bool(is_A),
             "B": bool(is_B),
-        }
+        },
     }
     return score, details
 
@@ -55,14 +55,30 @@ def score_quality(summary: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
 def iter_sessions(root: Path) -> List[Path]:
     if not root.exists():
         return []
-    return sorted([d for d in root.iterdir() if d.is_dir() and d.name.startswith("session_")])
+    return sorted(
+        [d for d in root.iterdir() if d.is_dir() and d.name.startswith("session_")]
+    )
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Ajoute un quality_score (A/B/C) dans chaque summary.json de session.")
-    ap.add_argument("--root", default=str(DEFAULT_ROOT), help="Racine des sessions (default: output/realtime)")
-    ap.add_argument("--summary-name", default=SUMMARY_NAME, help="Nom du fichier summary (default: summary.json)")
-    ap.add_argument("--force", action="store_true", help="Réécrire même si quality_score existe déjà")
+    ap = argparse.ArgumentParser(
+        description="Ajoute un quality_score (A/B/C) dans chaque summary.json de session."
+    )
+    ap.add_argument(
+        "--root",
+        default=str(DEFAULT_ROOT),
+        help="Racine des sessions (default: output/realtime)",
+    )
+    ap.add_argument(
+        "--summary-name",
+        default=SUMMARY_NAME,
+        help="Nom du fichier summary (default: summary.json)",
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="Réécrire même si quality_score existe déjà",
+    )
     args = ap.parse_args()
 
     root = Path(args.root)

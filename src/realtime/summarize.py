@@ -40,11 +40,11 @@ def _pick_emotion(rec: Dict[str, Any]) -> Optional[str]:
     On garde aussi les clés "offline" pour compatibilité.
     """
     for k in (
-        "emotion",                # realtime
-        "smoothed_final_emotion", # offline
-        "final_emotion",          # offline
-        "hse_emotion",            # offline
-        "deepface_emotion",       # offline
+        "emotion",  # realtime
+        "smoothed_final_emotion",  # offline
+        "final_emotion",  # offline
+        "hse_emotion",  # offline
+        "deepface_emotion",  # offline
     ):
         if k in rec:
             return _normalize_label(rec.get(k))
@@ -52,7 +52,12 @@ def _pick_emotion(rec: Dict[str, Any]) -> Optional[str]:
 
 
 def _pick_confidence(rec: Dict[str, Any]) -> Optional[float]:
-    for k in ("confidence", "final_confidence", "hse_confidence", "deepface_confidence"):
+    for k in (
+        "confidence",
+        "final_confidence",
+        "hse_confidence",
+        "deepface_confidence",
+    ):
         if k in rec and rec.get(k) is not None:
             try:
                 return float(rec[k])
@@ -169,10 +174,13 @@ def summarize_json(json_path: Path) -> Dict[str, Any]:
     counts = Counter(emotions)
 
     # dominante: on ignore unknown + Uncertain si possible
-    counts_for_dom = Counter({
-        k: v for k, v in counts.items()
-        if (k.lower() != "uncertain") and (k.lower() not in UNKNOWN_LABELS)
-    })
+    counts_for_dom = Counter(
+        {
+            k: v
+            for k, v in counts.items()
+            if (k.lower() != "uncertain") and (k.lower() not in UNKNOWN_LABELS)
+        }
+    )
     dominant = (
         counts_for_dom.most_common(1)[0][0]
         if counts_for_dom
@@ -208,7 +216,9 @@ def summarize_json(json_path: Path) -> Dict[str, Any]:
 def write_summary(json_path: Path, output_name: str = DEFAULT_SUMMARY_NAME) -> Path:
     summary = summarize_json(json_path)
     out_path = json_path.parent / output_name
-    out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     return out_path
 
 
@@ -226,7 +236,9 @@ def _iter_sessions(root: Path, session_json_name: str) -> Iterable[Tuple[Path, P
             yield session_dir, json_path
 
 
-def run_one_session(root: Path, session_name: str, session_json_name: str, out_name: str) -> None:
+def run_one_session(
+    root: Path, session_name: str, session_json_name: str, out_name: str
+) -> None:
     session_dir = root / session_name
     if not session_dir.exists():
         raise FileNotFoundError(f"Session inexistante: {session_dir}")
@@ -239,7 +251,9 @@ def run_one_session(root: Path, session_name: str, session_json_name: str, out_n
     print(f"[OK] summary écrit: {out}")
 
 
-def run_all_sessions(root: Path, session_json_name: str, out_name: str, force: bool) -> None:
+def run_all_sessions(
+    root: Path, session_json_name: str, out_name: str, force: bool
+) -> None:
     done = 0
     skipped = 0
     errors = 0
@@ -275,14 +289,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--session", help="Nom du dossier session (ex: session_2026-01-10_22-41-06)")
-    mode.add_argument("--all", action="store_true", help="Résumer toutes les sessions sous le root")
+    mode.add_argument(
+        "--session", help="Nom du dossier session (ex: session_2026-01-10_22-41-06)"
+    )
+    mode.add_argument(
+        "--all", action="store_true", help="Résumer toutes les sessions sous le root"
+    )
 
-    parser.add_argument("--root", default=str(DEFAULT_ROOT), help="Dossier racine des sessions (default: output/realtime)")
-    parser.add_argument("--session-json", default=DEFAULT_SESSION_JSON,
-                        help="Nom du fichier JSON dans chaque session (default: realtime_emotions.json)")
-    parser.add_argument("--out-name", default=DEFAULT_SUMMARY_NAME, help="Nom du fichier summary (default: summary.json)")
-    parser.add_argument("--force", action="store_true", help="Régénérer même si summary existe (utile avec --all)")
+    parser.add_argument(
+        "--root",
+        default=str(DEFAULT_ROOT),
+        help="Dossier racine des sessions (default: output/realtime)",
+    )
+    parser.add_argument(
+        "--session-json",
+        default=DEFAULT_SESSION_JSON,
+        help="Nom du fichier JSON dans chaque session (default: realtime_emotions.json)",
+    )
+    parser.add_argument(
+        "--out-name",
+        default=DEFAULT_SUMMARY_NAME,
+        help="Nom du fichier summary (default: summary.json)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Régénérer même si summary existe (utile avec --all)",
+    )
 
     return parser
 

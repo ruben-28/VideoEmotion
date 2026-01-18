@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks
 
 from src.core.video_manager import VideoManager
 from src.core.trash_manager import TrashManager
@@ -8,15 +8,16 @@ from app.schemas import StatsResponse
 
 router = APIRouter(prefix="/api/stats", tags=["Statistics"])
 
+
 @router.get("", response_model=StatsResponse)
 async def get_stats(
     video_manager: VideoManager = Depends(get_video_manager),
-    trash_manager: TrashManager = Depends(get_trash_manager)
+    trash_manager: TrashManager = Depends(get_trash_manager),
 ):
     """Get global statistics"""
     video_stats = video_manager.get_stats()
     trash_stats = trash_manager.get_trash_stats()
-    
+
     return StatsResponse(
         total_videos=video_stats["total_videos"],
         offline_videos=video_stats["offline_videos"],
@@ -26,13 +27,14 @@ async def get_stats(
         unprocessed=video_stats["unprocessed"],
         total_size_mb=video_stats["total_size_mb"],
         trash_stats=trash_stats,
-        emotion_distribution=video_stats.get("emotion_distribution")
+        emotion_distribution=video_stats.get("emotion_distribution"),
     )
+
 
 @router.post("/refresh")
 async def refresh_stats(
     background_tasks: BackgroundTasks,
-    stats_updater: StatsUpdater = Depends(get_stats_updater)
+    stats_updater: StatsUpdater = Depends(get_stats_updater),
 ):
     """Force statistics recalculation"""
     background_tasks.add_task(stats_updater.recalculate_all_stats)

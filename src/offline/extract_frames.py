@@ -72,7 +72,7 @@ def extract_frames(video_path, output_folder, frame_rate=5):
 
             frame_filename = os.path.join(
                 frames_dir,
-                f"frame_{saved_frame_count:05d}_t{current_time_ms_int:08d}.jpg"
+                f"frame_{saved_frame_count:05d}_t{current_time_ms_int:08d}.jpg",
             )
             cv2.imwrite(frame_filename, frame)
             saved_frame_count += 1
@@ -101,25 +101,58 @@ def extract_all_new_videos(videos_dir, extracted_root, frame_rate=5):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract frames from videos (VideoEmotion)")
+    parser = argparse.ArgumentParser(
+        description="Extract frames from videos (VideoEmotion)"
+    )
 
     # CLI
-    parser.add_argument("--video", default=None, help="Vidéo spécifique (si fourni, on ne traite que celle-là).")
-    parser.add_argument("--videos-dir", default=None, help="Dossier contenant des vidéos (si --video non fourni).")
-    parser.add_argument("--output", default=None, help="Dossier racine de sortie pour extracted_frames.")
-    parser.add_argument("--fps", type=int, default=None, help="FPS extraction (override config si fourni).")
-    parser.add_argument("--project-root", default=None, help="Racine du projet (défaut: auto).")
-    parser.add_argument("--config", default=None, help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).")
+    parser.add_argument(
+        "--video",
+        default=None,
+        help="Vidéo spécifique (si fourni, on ne traite que celle-là).",
+    )
+    parser.add_argument(
+        "--videos-dir",
+        default=None,
+        help="Dossier contenant des vidéos (si --video non fourni).",
+    )
+    parser.add_argument(
+        "--output", default=None, help="Dossier racine de sortie pour extracted_frames."
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=None,
+        help="FPS extraction (override config si fourni).",
+    )
+    parser.add_argument(
+        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).",
+    )
 
     args = parser.parse_args()
 
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
-    config_path = resolve_from_project(project_root, args.config) if args.config else (project_root / "config.yaml")
+    project_root = (
+        Path(args.project_root).resolve()
+        if args.project_root
+        else Path(__file__).resolve().parents[1]
+    )
+    config_path = (
+        resolve_from_project(project_root, args.config)
+        if args.config
+        else (project_root / "config.yaml")
+    )
     cfg = load_config(config_path)
 
     # Paths depuis config (si CLI absent)
     cfg_videos_dir = cfg_get(cfg, "paths", "videos", default="data/videos")
-    cfg_extracted_root = cfg_get(cfg, "paths", "extracted_frames", default="data/extracted_frames")
+    cfg_extracted_root = cfg_get(
+        cfg, "paths", "extracted_frames", default="data/extracted_frames"
+    )
 
     videos_dir = (
         resolve_from_project(project_root, args.videos_dir)

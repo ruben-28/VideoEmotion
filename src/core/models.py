@@ -6,11 +6,11 @@ from enum import Enum
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Dict, List, Optional, Literal
-from pathlib import Path
 
 
 class VideoStatus(Enum):
     """Video processing status"""
+
     UNPROCESSED = "unprocessed"
     PARTIAL = "partial"
     PROCESSED = "processed"
@@ -18,12 +18,14 @@ class VideoStatus(Enum):
 
 class VideoMode(Enum):
     """Video processing mode"""
+
     OFFLINE = "offline"
     REALTIME = "realtime"
 
 
 class JobStatus(Enum):
     """Pipeline job status"""
+
     PENDING = "pending"
     RUNNING = "running"
     DONE = "done"
@@ -34,6 +36,7 @@ class JobStatus(Enum):
 @dataclass
 class VideoMetadata:
     """Metadata for a video entity"""
+
     id: str
     name: str
     mode: VideoMode
@@ -44,7 +47,7 @@ class VideoMetadata:
     pipeline_config: Optional[Dict] = None
     stats: Optional[Dict] = None
     file_size_bytes: Optional[int] = None
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization"""
         return {
@@ -53,13 +56,15 @@ class VideoMetadata:
             "mode": self.mode.value,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
-            "processed_at": self.processed_at.isoformat() if self.processed_at else None,
+            "processed_at": self.processed_at.isoformat()
+            if self.processed_at
+            else None,
             "file_paths": self.file_paths,
             "pipeline_config": self.pipeline_config,
             "stats": self.stats,
             "file_size_bytes": self.file_size_bytes,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> "VideoMetadata":
         """Create from dictionary"""
@@ -69,7 +74,9 @@ class VideoMetadata:
             mode=VideoMode(data["mode"]),
             status=VideoStatus(data["status"]),
             created_at=datetime.fromisoformat(data["created_at"]),
-            processed_at=datetime.fromisoformat(data["processed_at"]) if data.get("processed_at") else None,
+            processed_at=datetime.fromisoformat(data["processed_at"])
+            if data.get("processed_at")
+            else None,
             file_paths=data.get("file_paths", {}),
             pipeline_config=data.get("pipeline_config"),
             stats=data.get("stats"),
@@ -80,6 +87,7 @@ class VideoMetadata:
 @dataclass
 class TrashMetadata:
     """Metadata for a trashed video"""
+
     trash_id: str
     original_video_id: str
     video_name: str
@@ -89,7 +97,7 @@ class TrashMetadata:
     original_paths: Dict[str, str]
     trash_paths: Dict[str, str]
     size_bytes: Optional[int] = None
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization"""
         return {
@@ -103,7 +111,7 @@ class TrashMetadata:
             "trash_paths": self.trash_paths,
             "size_bytes": self.size_bytes,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> "TrashMetadata":
         """Create from dictionary"""
@@ -123,6 +131,7 @@ class TrashMetadata:
 @dataclass
 class PipelineConfig:
     """Configuration for pipeline execution"""
+
     fps: int = 5
     smoothing: bool = True
     tta: bool = True
@@ -135,11 +144,11 @@ class PipelineConfig:
     no_analyze: bool = False
     no_summary: bool = False
     no_visualize: bool = False
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary"""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> "PipelineConfig":
         """Create from dictionary"""
@@ -149,11 +158,12 @@ class PipelineConfig:
 @dataclass
 class PipelineProgress:
     """Progress information for a pipeline job"""
+
     current_step: str
     current_step_index: int
     total_steps: int
     percent: float
-    
+
     def to_dict(self) -> Dict:
         return asdict(self)
 
@@ -161,6 +171,7 @@ class PipelineProgress:
 @dataclass
 class PipelineJob:
     """Pipeline execution job"""
+
     job_id: str
     video_name: str
     status: JobStatus
@@ -171,7 +182,7 @@ class PipelineJob:
     progress: Optional[PipelineProgress] = None
     logs: List[str] = field(default_factory=list)
     error: Optional[str] = None
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization"""
         return {
@@ -181,26 +192,32 @@ class PipelineJob:
             "config": self.config.to_dict(),
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": self.completed_at.isoformat()
+            if self.completed_at
+            else None,
             "progress": self.progress.to_dict() if self.progress else None,
             "logs": self.logs,
             "error": self.error,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> "PipelineJob":
         """Create from dictionary"""
         progress_data = data.get("progress")
         progress = PipelineProgress(**progress_data) if progress_data else None
-        
+
         return cls(
             job_id=data["job_id"],
             video_name=data["video_name"],
             status=JobStatus(data["status"]),
             config=PipelineConfig.from_dict(data["config"]),
             created_at=datetime.fromisoformat(data["created_at"]),
-            started_at=datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None,
-            completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,
+            started_at=datetime.fromisoformat(data["started_at"])
+            if data.get("started_at")
+            else None,
+            completed_at=datetime.fromisoformat(data["completed_at"])
+            if data.get("completed_at")
+            else None,
             progress=progress,
             logs=data.get("logs", []),
             error=data.get("error"),

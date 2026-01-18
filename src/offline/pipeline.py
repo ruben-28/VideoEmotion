@@ -8,8 +8,17 @@ from typing import Any, Dict, Optional, List
 import yaml
 
 
+import logging
+
+# Setup Logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger("pipeline")
+
+
 def eprint(*args):
-    print(*args, file=sys.stderr)
+    logger.error(" ".join(map(str, args)))
 
 
 def add_src_to_syspath(project_root: Path) -> Path:
@@ -27,7 +36,9 @@ def load_config(config_path: Path) -> Dict[str, Any]:
             data = yaml.safe_load(f) or {}
         return data if isinstance(data, dict) else {}
     except Exception as e:
-        eprint(f"[WARN] Impossible de lire config: {config_path} ({type(e).__name__}: {e})")
+        eprint(
+            f"[WARN] Impossible de lire config: {config_path} ({type(e).__name__}: {e})"
+        )
         return {}
 
 
@@ -58,15 +69,19 @@ def run_detect_faces_cli_in_mp_env(
     cmd = [
         py_detect,
         str((project_root / "src" / "offline" / "detect_faces.py").resolve()),
-        "--project-root", str(project_root),
-        "--config", str(config_path),
-        "--input-frames", str(input_frames_root),
-        "--output-faces", str(output_faces_root),
+        "--project-root",
+        str(project_root),
+        "--config",
+        str(config_path),
+        "--input-frames",
+        str(input_frames_root),
+        "--output-faces",
+        str(output_faces_root),
     ]
     if export_bboxes:
         cmd += ["--export-bboxes"]
 
-    print(f"\n[PIPELINE] detect_faces via: {py_detect}")
+    logger.info(f"\n[PIPELINE] detect_faces via: {py_detect}")
     return subprocess.call(cmd, cwd=str(project_root))
 
 
@@ -83,10 +98,14 @@ def run_summary_for_video(
     try:
         new_argv = [
             saved_argv[0],
-            "--project-root", str(project_root),
-            "--config", str(config_path),
-            "--input-dir", str(emotion_out_root),
-            "--output-dir", str(reports_out_root),
+            "--project-root",
+            str(project_root),
+            "--config",
+            str(config_path),
+            "--input-dir",
+            str(emotion_out_root),
+            "--output-dir",
+            str(reports_out_root),
         ]
         if video_name:
             new_argv += ["--only-session", str(video_name)]
@@ -125,7 +144,11 @@ def run_visualize_for_video(
     frames_dir = frames_dir_name_from_fps(fps)
 
     # Prefer explicit video_path else search in data/videos
-    src_video = video_path if video_path.exists() else resolve_source_video(videos_dir, video_name)
+    src_video = (
+        video_path
+        if video_path.exists()
+        else resolve_source_video(videos_dir, video_name)
+    )
     if src_video is None or not src_video.exists():
         eprint(f"[WARN] Source video introuvable pour visualisation: {video_name}")
         return
@@ -141,11 +164,15 @@ def run_visualize_for_video(
     out_h264 = per_video_dir / f"{video_name}_annotated_h264.mp4"
 
     if not force and (out_h264.exists() or out_video.exists()):
-        print(f"[SKIP] Visualize already exists: {out_h264 if out_h264.exists() else out_video}")
+        logger.info(
+            f"[SKIP] Visualize already exists: {out_h264 if out_h264.exists() else out_video}"
+        )
         return
 
     # Aggregate JSON -> INSIDE per-video folder
-    emotion_scan_root = emotion_video_root  # IMPORTANT: now already points to .../<video>/frames_fpsX
+    emotion_scan_root = (
+        emotion_video_root  # IMPORTANT: now already points to .../<video>/frames_fpsX
+    )
     aggregated_json = per_video_dir / f"{video_name}_{frames_dir}_video_emotions.json"
     aggregate_video_results(emotion_scan_root, aggregated_json)
 
@@ -154,30 +181,39 @@ def run_visualize_for_video(
 
     script_path = (project_root / "src" / "offline" / "visualize_results.py").resolve()
     cmd = [
-        sys.executable, str(script_path),
-        "--video", str(src_video),
-        "--results", str(aggregated_json),
-        "--out", str(visualizations_root),
+        sys.executable,
+        str(script_path),
+        "--video",
+        str(src_video),
+        "--results",
+        str(aggregated_json),
+        "--out",
+        str(visualizations_root),
         "--use-smoothed",
         "--show-confidence",
         "--show-backend",
-        "--bbox-fps", str(fps),
+        "--bbox-fps",
+        str(fps),
         "--copy-jsons",
     ]
     if bbox_json is not None:
         cmd += ["--bboxes-json", str(bbox_json)]
 
-    print(f"[5/5] Visualize")
-    print("[RUN] " + " ".join(cmd))
+    logger.info("[5/5] Visualize")
+    logger.info("[RUN] " + " ".join(cmd))
     subprocess.run(cmd, cwd=str(project_root), check=False)
 
     if out_h264.exists():
-        print(f"[OK] Chrome-friendly: {out_h264}")
+        logger.info(f"[OK] Chrome-friendly: {out_h264}")
     elif out_video.exists():
-        print(f"[OK] RAW video: {out_video}")
-        print("[WARN] Pas de version _h264.mp4 trouvée (ffmpeg peut manquer ou avoir échoué).")
+        logger.info(f"[OK] RAW video: {out_video}")
+        logger.warning(
+            "No _h264.mp4 version found (ffmpeg might be missing or failed)."
+        )
     else:
-        print("[WARN] Aucune vidéo de sortie trouvée dans le sous-dossier (voir logs visualize_results.py).")
+        logger.warning(
+            "No output video found in subfolder (check visualize_results.py logs)."
+        )
 
 
 def run_pipeline_for_video(
@@ -189,11 +225,25 @@ def run_pipeline_for_video(
     args: argparse.Namespace,
     videos_dir: Path,
 ) -> None:
-    extracted_root = resolve_from_project(project_root, str(cfg_get(cfg, "paths", "extracted_frames", default="data/extracted_frames")))
-    detected_root = resolve_from_project(project_root, str(cfg_get(cfg, "paths", "detected_faces", default="data/detected_faces")))
-    emotion_out_root = resolve_from_project(project_root, str(cfg_get(cfg, "paths", "emotion_results", default="output/emotion_results")))
-    reports_out_root = resolve_from_project(project_root, str(cfg_get(cfg, "paths", "reports", default="output/reports")))
-    visualizations_root = resolve_from_project(project_root, str(cfg_get(cfg, "paths", "visualizations", default="output/visualizations")))
+    extracted_root = resolve_from_project(
+        project_root,
+        str(cfg_get(cfg, "paths", "extracted_frames", default="data/extracted_frames")),
+    )
+    detected_root = resolve_from_project(
+        project_root,
+        str(cfg_get(cfg, "paths", "detected_faces", default="data/detected_faces")),
+    )
+    emotion_out_root = resolve_from_project(
+        project_root,
+        str(cfg_get(cfg, "paths", "emotion_results", default="output/emotion_results")),
+    )
+    reports_out_root = resolve_from_project(
+        project_root, str(cfg_get(cfg, "paths", "reports", default="output/reports"))
+    )
+    visualizations_root = resolve_from_project(
+        project_root,
+        str(cfg_get(cfg, "paths", "visualizations", default="output/visualizations")),
+    )
 
     # ✅ IMPORTANT: if reports path is generic, keep consistent with your summary script default
     if str(reports_out_root).replace("\\", "/").rstrip("/") == "output/reports":
@@ -203,12 +253,13 @@ def run_pipeline_for_video(
     py_detect = args.py_detect or (str(cfg_py_detect) if cfg_py_detect else None)
 
     from offline.utils import frames_dir_name_from_fps
+
     frames_dir = frames_dir_name_from_fps(fps)  # ex: frames_fps5
 
     video_name = video_path.stem
-    print(f"\n###########################################################")
-    print(f"### Processing Video: {video_name}")
-    print(f"###########################################################")
+    logger.info("\n###########################################################")
+    logger.info(f"### Processing Video: {video_name}")
+    logger.info("###########################################################")
 
     # ✅ New consistent structure:
     # extracted: data/extracted_frames/<video>/frames_fpsX/
@@ -219,11 +270,11 @@ def run_pipeline_for_video(
     detected_video_root = detected_root / video_name / frames_dir
     emotion_video_root = emotion_out_root / video_name / frames_dir
 
-    master_json_path = (emotion_out_root / "emotion_results_master.json")
+    master_json_path = emotion_out_root / "emotion_results_master.json"
 
     # Visualize-only logic
     if args.visualize_only:
-        print("[VISUALIZE ONLY] Running aggregation + visualization only.")
+        logger.info("[VISUALIZE ONLY] Running aggregation + visualization only.")
         run_visualize_for_video(
             project_root=project_root,
             video_path=video_path,
@@ -239,12 +290,12 @@ def run_pipeline_for_video(
 
     # Summary-only logic
     if args.summary_only:
-        print("[SUMMARY ONLY] Skipping extraction/detection/analysis.")
+        logger.info("[SUMMARY ONLY] Skipping extraction/detection/analysis.")
         if not emotion_out_root.exists():
             eprint(f"[ERROR] emotion_results dir not found: {emotion_out_root}")
             return
 
-        print(f"[4/5] Summary Report")
+        logger.info("[4/5] Summary Report")
         run_summary_for_video(
             project_root=project_root,
             config_path=config_path,
@@ -252,15 +303,16 @@ def run_pipeline_for_video(
             reports_out_root=reports_out_root,
             video_name=video_name,
         )
-        print(f"Summary done for {video_name}.")
+        logger.info(f"Summary done for {video_name}.")
         return
 
     # 1) Extract
     if args.no_extract:
-        print("[SKIP] Step 1 (Extract)")
+        logger.info("[SKIP] Step 1 (Extract)")
     else:
-        print(f"[1/5] Extract frames (fps={fps})")
+        logger.info(f"[1/5] Extract frames (fps={fps})")
         from offline.extract_frames import extract_frames
+
         extracted_video_root.mkdir(parents=True, exist_ok=True)
         ok = extract_frames(
             video_path=str(video_path),
@@ -273,9 +325,9 @@ def run_pipeline_for_video(
 
     # 2) Detect
     if args.no_detect:
-        print("[SKIP] Step 2 (Detect)")
+        logger.info("[SKIP] Step 2 (Detect)")
     else:
-        print(f"[2/5] Detect faces")
+        logger.info("[2/5] Detect faces")
         if py_detect is None:
             eprint("[ERROR] py-detect not configured.")
             sys.exit(1)
@@ -297,8 +349,9 @@ def run_pipeline_for_video(
     if args.no_analyze:
         print("[SKIP] Step 3 (Analyze)")
     else:
-        print(f"[3/5] Analyze emotions")
+        print("[3/5] Analyze emotions")
         from offline.analyze_emotion import analyze_emotions_incremental
+
         emotion_video_root.mkdir(parents=True, exist_ok=True)
         analyze_emotions_incremental(
             faces_root=str(detected_video_root),
@@ -310,7 +363,7 @@ def run_pipeline_for_video(
     if args.no_summary:
         print("[SKIP] Step 4 (Summary)")
     else:
-        print(f"[4/5] Summary Report")
+        print("[4/5] Summary Report")
         run_summary_for_video(
             project_root=project_root,
             config_path=config_path,
@@ -335,7 +388,7 @@ def run_pipeline_for_video(
             force=args.force_visualize,
         )
 
-    print(f"✅ Pipeline finished for {video_name}.")
+    logger.info(f"✅ Pipeline finished for {video_name}.")
 
 
 def main():
@@ -344,38 +397,95 @@ def main():
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--video", help="Chemin vers la vidéo (ex: data/videos/x.mp4)")
-    group.add_argument("--all", action="store_true", help="Traiter TOUTES les vidéos trouvées dans data/videos (config).")
+    group.add_argument(
+        "--all",
+        action="store_true",
+        help="Traiter TOUTES les vidéos trouvées dans data/videos (config).",
+    )
 
-    parser.add_argument("--fps", type=int, default=None, help="FPS extraction (override config si fourni)")
-    parser.add_argument("--py-detect", default=None, help="Chemin vers python.exe du venv mp_env (mediapipe).")
-    parser.add_argument("--project-root", default=None, help="Racine du projet (défaut: auto).")
-    parser.add_argument("--config", default=None, help="Chemin config.yaml (défaut: <project-root>/config.yaml).")
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=None,
+        help="FPS extraction (override config si fourni)",
+    )
+    parser.add_argument(
+        "--py-detect",
+        default=None,
+        help="Chemin vers python.exe du venv mp_env (mediapipe).",
+    )
+    parser.add_argument(
+        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Chemin config.yaml (défaut: <project-root>/config.yaml).",
+    )
 
-    parser.add_argument("--no-extract", action="store_true", help="Skip étape 1 (extract_frames).")
-    parser.add_argument("--no-detect", action="store_true", help="Skip étape 2 (detect_faces).")
-    parser.add_argument("--no-analyze", action="store_true", help="Skip étape 3 (analyze_emotion).")
-    parser.add_argument("--no-summary", action="store_true", help="Skip étape 4 (emotion_summary_report).")
-    parser.add_argument("--summary-only", action="store_true", help="Ne faire QUE le summary/report (étape 4).")
+    parser.add_argument(
+        "--no-extract", action="store_true", help="Skip étape 1 (extract_frames)."
+    )
+    parser.add_argument(
+        "--no-detect", action="store_true", help="Skip étape 2 (detect_faces)."
+    )
+    parser.add_argument(
+        "--no-analyze", action="store_true", help="Skip étape 3 (analyze_emotion)."
+    )
+    parser.add_argument(
+        "--no-summary",
+        action="store_true",
+        help="Skip étape 4 (emotion_summary_report).",
+    )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Ne faire QUE le summary/report (étape 4).",
+    )
 
-    parser.add_argument("--no-visualize", action="store_true", help="Skip étape 5 (visualize_results).")
-    parser.add_argument("--visualize-only", action="store_true", help="Ne faire QUE l'agrégation + visualisation (étape 5).")
+    parser.add_argument(
+        "--no-visualize", action="store_true", help="Skip étape 5 (visualize_results)."
+    )
+    parser.add_argument(
+        "--visualize-only",
+        action="store_true",
+        help="Ne faire QUE l'agrégation + visualisation (étape 5).",
+    )
 
-    parser.add_argument("--force-visualize", action="store_true", help="Recrée la vidéo annotée même si elle existe déjà.")
-    parser.add_argument("--export-bboxes", action="store_true", help="Demande à detect_faces d'exporter bboxes.json.")
+    parser.add_argument(
+        "--force-visualize",
+        action="store_true",
+        help="Recrée la vidéo annotée même si elle existe déjà.",
+    )
+    parser.add_argument(
+        "--export-bboxes",
+        action="store_true",
+        help="Demande à detect_faces d'exporter bboxes.json.",
+    )
 
     args = parser.parse_args()
 
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[2]
+    project_root = (
+        Path(args.project_root).resolve()
+        if args.project_root
+        else Path(__file__).resolve().parents[2]
+    )
     add_src_to_syspath(project_root)
 
-    config_path = resolve_from_project(project_root, args.config) if args.config else (project_root / "config.yaml")
+    config_path = (
+        resolve_from_project(project_root, args.config)
+        if args.config
+        else (project_root / "config.yaml")
+    )
     cfg = load_config(config_path)
 
     cfg_fps = cfg_get(cfg, "frame_extraction", "fps", default=5)
     fps = args.fps if args.fps is not None else int(cfg_fps)
     fps = max(1, int(fps))
 
-    videos_dir = resolve_from_project(project_root, str(cfg_get(cfg, "paths", "videos", default="data/videos")))
+    videos_dir = resolve_from_project(
+        project_root, str(cfg_get(cfg, "paths", "videos", default="data/videos"))
+    )
 
     videos_to_process: List[Path] = []
 
@@ -390,15 +500,17 @@ def main():
 
         if not p.exists():
             # Check nested structure first: data/videos/name/name.mp4
-            alt_nested = (videos_dir / Path(args.video).stem / Path(args.video).name).resolve()
+            alt_nested = (
+                videos_dir / Path(args.video).stem / Path(args.video).name
+            ).resolve()
             if alt_nested.exists():
-                 p = alt_nested
+                p = alt_nested
             else:
-                 # Check flat structure
-                 alt = (videos_dir / Path(args.video).name).resolve()
-                 if alt.exists():
+                # Check flat structure
+                alt = (videos_dir / Path(args.video).name).resolve()
+                if alt.exists():
                     p = alt
-        
+
         if not p.exists():
             eprint(f"[FATAL] Video not found: {args.video} (tried: {p})")
             sys.exit(1)
@@ -410,7 +522,7 @@ def main():
             sys.exit(1)
 
         exts = {".mp4", ".avi", ".mov", ".mkv"}
-        
+
         # Scan nested folders
         for item in videos_dir.iterdir():
             if item.is_dir():
@@ -423,7 +535,7 @@ def main():
                         videos_to_process.append(cand)
                         found = True
                         break
-        
+
         # Scan flat files (legacy)
         for f in videos_dir.iterdir():
             if f.is_file() and f.suffix.lower() in exts:
@@ -449,6 +561,7 @@ def main():
         except Exception as e:
             eprint(f"[ERROR] Crash while processing {vid.name}: {e}")
             import traceback
+
             traceback.print_exc()
 
     if args.all and not args.no_summary:
@@ -458,8 +571,21 @@ def main():
         run_summary_for_video(
             project_root=project_root,
             config_path=config_path,
-            emotion_out_root=resolve_from_project(project_root, str(cfg_get(cfg, "paths", "emotion_results", default="output/emotion_results"))),
-            reports_out_root=resolve_from_project(project_root, str(cfg_get(cfg, "paths", "reports", default="output/reports"))),
+            emotion_out_root=resolve_from_project(
+                project_root,
+                str(
+                    cfg_get(
+                        cfg,
+                        "paths",
+                        "emotion_results",
+                        default="output/emotion_results",
+                    )
+                ),
+            ),
+            reports_out_root=resolve_from_project(
+                project_root,
+                str(cfg_get(cfg, "paths", "reports", default="output/reports")),
+            ),
             video_name=None,
         )
 

@@ -1,23 +1,23 @@
-
 import subprocess
 import sys
 import threading
 import logging
-import signal
 import os
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+
 class RealtimeStatus(str, Enum):
     IDLE = "idle"
     RUNNING = "running"
     STOPPING = "stopping"
     ERROR = "error"
+
 
 class RealtimeConfig(BaseModel):
     camera_id: int = 0
@@ -27,6 +27,7 @@ class RealtimeConfig(BaseModel):
     save_video: bool = True
     visualize: bool = True
 
+
 class RealtimeSession(BaseModel):
     session_id: str
     start_time: datetime
@@ -35,11 +36,13 @@ class RealtimeSession(BaseModel):
     output_dir: Optional[str] = None
     error: Optional[str] = None
 
+
 class RealtimeManager:
     """
     Manages the realtime analysis subprocess.
     Ensures only one session runs at a time.
     """
+
     def __init__(self, project_root: Path, python_executable: str = sys.executable):
         self.project_root = project_root
         self.python_executable = python_executable
@@ -74,7 +77,7 @@ class RealtimeManager:
                 session_id="none",
                 start_time=datetime.now(),
                 status=RealtimeStatus.IDLE,
-                config=RealtimeConfig()
+                config=RealtimeConfig(),
             )
         return self._session
 
@@ -86,30 +89,32 @@ class RealtimeManager:
         if self.is_running:
             raise RuntimeError("A realtime session is already running")
 
-        self._logs = [] # Clear logs
+        self._logs = []  # Clear logs
         self._stop_event.clear()
-        
+
         script_path = self.project_root / "src" / "realtime" / "realtime_analysis.py"
-        
+
         # Build command args
         cmd = [
             self.python_executable,
             str(script_path),
-            "--camera-id", str(config.camera_id),
-            "--project-root", str(self.project_root),
+            "--camera-id",
+            str(config.camera_id),
+            "--project-root",
+            str(self.project_root),
         ]
-        
+
         if config.display_width > 0:
             cmd.extend(["--display-width", str(config.display_width)])
-            
+
         cmd.extend(["--min-det-score", str(config.min_det_score)])
-        
+
         if not config.save_json:
             cmd.append("--no-save-json")
-            
+
         if not config.save_video:
             cmd.append("--no-save-video")
-            
+
         if not config.visualize:
             cmd.append("--no-visualize")
 
@@ -124,29 +129,29 @@ class RealtimeManager:
             self._process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, # Merge stderr to stdout
+                stderr=subprocess.STDOUT,  # Merge stderr to stdout
                 text=True,
                 cwd=str(self.project_root),
                 bufsize=1,
-                encoding='utf-8', 
-                errors='replace',
-                env=env
+                encoding="utf-8",
+                errors="replace",
+                env=env,
             )
-            
+
             # Start log consumer thread
             threading.Thread(target=self._consume_logs, daemon=True).start()
-            
+
             self._session = RealtimeSession(
                 session_id=datetime.now().strftime("%Y%m%d_%H%M%S"),
                 start_time=datetime.now(),
                 status=RealtimeStatus.RUNNING,
                 config=config,
-                output_dir="output/realtime" # Default
+                output_dir="output/realtime",  # Default
             )
-            
+
             logger.info(f"Started realtime session {self._session.session_id}")
             return self._session
-            
+
         except Exception as e:
             logger.error(f"Failed to start realtime session: {e}")
             self._session = None
@@ -158,14 +163,14 @@ class RealtimeManager:
 
         logger.info("Stopping realtime session...")
         self._stop_event.set()
-        
+
         if self._session:
             self._session.status = RealtimeStatus.STOPPING
 
         # Try graceful termination - relying on the script's ability to handle signals might be tricky on Windows
         # sending 'q' to stdin if it was checking that, but it checks cv2.waitKey
         # So we just terminate.
-        
+
         try:
             self._process.terminate()
             try:
@@ -174,7 +179,7 @@ class RealtimeManager:
                 self._process.kill()
         except Exception as e:
             logger.error(f"Error stopping process: {e}")
-            
+
         if self._session:
             self._session.status = RealtimeStatus.IDLE
 
@@ -182,9 +187,9 @@ class RealtimeManager:
         """Reads stdout from process and appends to logs"""
         if not self._process or not self._process.stdout:
             return
-            
+
         try:
-            for line in iter(self._process.stdout.readline, ''):
+            for line in iter(self._process.stdout.readline, ""):
                 line = line.strip()
                 if line:
                     with self._log_lock:

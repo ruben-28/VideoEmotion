@@ -27,7 +27,9 @@ def _write_json(p: Path, obj: Dict[str, Any]) -> None:
 def _iter_session_dirs(root: Path) -> List[Path]:
     if not root.exists():
         return []
-    return sorted([d for d in root.iterdir() if d.is_dir() and d.name.startswith("session_")])
+    return sorted(
+        [d for d in root.iterdir() if d.is_dir() and d.name.startswith("session_")]
+    )
 
 
 def _safe_float(x: Any, default: float = 0.0) -> float:
@@ -111,11 +113,18 @@ def summarize_realtime_json(json_path: Path) -> Dict[str, Any]:
     counts = Counter(emotions)
 
     # dominante: ignorer unknown + Uncertain si possible
-    counts_for_dom = Counter({
-        k: v for k, v in counts.items()
-        if (k.lower() != "uncertain") and (k.lower() not in UNKNOWN_LABELS)
-    })
-    dominant = counts_for_dom.most_common(1)[0][0] if counts_for_dom else counts.most_common(1)[0][0]
+    counts_for_dom = Counter(
+        {
+            k: v
+            for k, v in counts.items()
+            if (k.lower() != "uncertain") and (k.lower() not in UNKNOWN_LABELS)
+        }
+    )
+    dominant = (
+        counts_for_dom.most_common(1)[0][0]
+        if counts_for_dom
+        else counts.most_common(1)[0][0]
+    )
 
     perc = {k: round((v / nb) * 100.0, 2) for k, v in counts.items()} if nb else {}
 
@@ -138,7 +147,9 @@ def summarize_realtime_json(json_path: Path) -> Dict[str, Any]:
     }
 
 
-def ensure_session_summary(session_dir: Path, session_json_name: str, summary_name: str, force: bool) -> Tuple[bool, str]:
+def ensure_session_summary(
+    session_dir: Path, session_json_name: str, summary_name: str, force: bool
+) -> Tuple[bool, str]:
     summary_path = session_dir / summary_name
     json_path = session_dir / session_json_name
 
@@ -191,9 +202,7 @@ def _quality_breakdown(summaries: List[Tuple[str, Dict[str, Any]]]) -> Dict[str,
 
 
 def _build_rankings(
-    summaries: List[Tuple[str, Dict[str, Any]]],
-    emotion_focus: str,
-    top_k: int
+    summaries: List[Tuple[str, Dict[str, Any]]], emotion_focus: str, top_k: int
 ) -> Dict[str, Any]:
     items = []
     for session_name, s in summaries:
@@ -204,30 +213,42 @@ def _build_rankings(
         q = s.get("quality_score", None)
         emo_pct = _get_emotion_percent(s, emotion_focus)
 
-        items.append({
-            "session": session_name,
-            "nb_frames": nb,
-            "duree_estimee_sec": dur,
-            "taux_uncertain": unc,
-            "emotion_dominante": dom,
-            "quality_score": q,
-            f"{emotion_focus}_percent": emo_pct,
-        })
+        items.append(
+            {
+                "session": session_name,
+                "nb_frames": nb,
+                "duree_estimee_sec": dur,
+                "taux_uncertain": unc,
+                "emotion_dominante": dom,
+                "quality_score": q,
+                f"{emotion_focus}_percent": emo_pct,
+            }
+        )
 
     return {
         "params": {"emotion_focus": emotion_focus, "top_k": top_k},
-        "top_by_duration": sorted(items, key=lambda x: x["duree_estimee_sec"], reverse=True)[:top_k],
-        "top_by_frames": sorted(items, key=lambda x: x["nb_frames"], reverse=True)[:top_k],
+        "top_by_duration": sorted(
+            items, key=lambda x: x["duree_estimee_sec"], reverse=True
+        )[:top_k],
+        "top_by_frames": sorted(items, key=lambda x: x["nb_frames"], reverse=True)[
+            :top_k
+        ],
         "best_by_uncertain": sorted(items, key=lambda x: x["taux_uncertain"])[:top_k],
-        "worst_by_uncertain": sorted(items, key=lambda x: x["taux_uncertain"], reverse=True)[:top_k],
-        f"top_by_{emotion_focus.lower()}_percent": sorted(items, key=lambda x: x[f"{emotion_focus}_percent"], reverse=True)[:top_k],
+        "worst_by_uncertain": sorted(
+            items, key=lambda x: x["taux_uncertain"], reverse=True
+        )[:top_k],
+        f"top_by_{emotion_focus.lower()}_percent": sorted(
+            items, key=lambda x: x[f"{emotion_focus}_percent"], reverse=True
+        )[:top_k],
     }
 
 
 # =========================
 # Master aggregation
 # =========================
-def aggregate_master(root: Path, summary_name: str, emotion_focus: str, top_k: int) -> Dict[str, Any]:
+def aggregate_master(
+    root: Path, summary_name: str, emotion_focus: str, top_k: int
+) -> Dict[str, Any]:
     session_dirs = _iter_session_dirs(root)
 
     summaries_ok: List[Tuple[str, Dict[str, Any]]] = []
@@ -273,7 +294,10 @@ def aggregate_master(root: Path, summary_name: str, emotion_focus: str, top_k: i
             "taux_uncertain_moyen": 0.0,
         }
     else:
-        global_perc = {emo: round((cnt / total_frames) * 100.0, 2) for emo, cnt in emotion_counts.items()}
+        global_perc = {
+            emo: round((cnt / total_frames) * 100.0, 2)
+            for emo, cnt in emotion_counts.items()
+        }
         dominant = emotion_counts.most_common(1)[0][0] if emotion_counts else None
         uncertain_avg = round((uncertain_weighted_sum / total_frames), 2)
 
@@ -293,7 +317,9 @@ def aggregate_master(root: Path, summary_name: str, emotion_focus: str, top_k: i
 
     # ✅ Ajouts demandés
     master["quality_breakdown"] = _quality_breakdown(summaries_ok)
-    master["rankings"] = _build_rankings(summaries_ok, emotion_focus=emotion_focus, top_k=top_k)
+    master["rankings"] = _build_rankings(
+        summaries_ok, emotion_focus=emotion_focus, top_k=top_k
+    )
 
     return master
 
@@ -302,14 +328,42 @@ def aggregate_master(root: Path, summary_name: str, emotion_focus: str, top_k: i
 # Main (tout-en-un)
 # =========================
 def main():
-    ap = argparse.ArgumentParser(description="Tout-en-un: génère les summary.json manquants puis summary_master.json (+rankings)")
-    ap.add_argument("--root", default=str(DEFAULT_ROOT), help="Dossier racine sessions (default: output/realtime)")
-    ap.add_argument("--session-json", default=DEFAULT_SESSION_JSON, help="Nom du JSON session (default: realtime_emotions.json)")
-    ap.add_argument("--summary-name", default=DEFAULT_SUMMARY_NAME, help="Nom du summary (default: summary.json)")
-    ap.add_argument("--master-name", default=DEFAULT_MASTER_NAME, help="Nom du master (default: summary_master.json)")
-    ap.add_argument("--force", action="store_true", help="Régénérer les summary.json même s'ils existent")
-    ap.add_argument("--emotion-focus", default="Happiness", help="Emotion utilisée pour le ranking top_by_<emotion>_percent")
-    ap.add_argument("--top-k", type=int, default=5, help="Nombre d'items par ranking (default: 5)")
+    ap = argparse.ArgumentParser(
+        description="Tout-en-un: génère les summary.json manquants puis summary_master.json (+rankings)"
+    )
+    ap.add_argument(
+        "--root",
+        default=str(DEFAULT_ROOT),
+        help="Dossier racine sessions (default: output/realtime)",
+    )
+    ap.add_argument(
+        "--session-json",
+        default=DEFAULT_SESSION_JSON,
+        help="Nom du JSON session (default: realtime_emotions.json)",
+    )
+    ap.add_argument(
+        "--summary-name",
+        default=DEFAULT_SUMMARY_NAME,
+        help="Nom du summary (default: summary.json)",
+    )
+    ap.add_argument(
+        "--master-name",
+        default=DEFAULT_MASTER_NAME,
+        help="Nom du master (default: summary_master.json)",
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="Régénérer les summary.json même s'ils existent",
+    )
+    ap.add_argument(
+        "--emotion-focus",
+        default="Happiness",
+        help="Emotion utilisée pour le ranking top_by_<emotion>_percent",
+    )
+    ap.add_argument(
+        "--top-k", type=int, default=5, help="Nombre d'items par ranking (default: 5)"
+    )
     args = ap.parse_args()
 
     root = Path(args.root)
@@ -321,7 +375,9 @@ def main():
     errors = 0
 
     for d in _iter_session_dirs(root):
-        _, reason = ensure_session_summary(d, args.session_json, args.summary_name, args.force)
+        _, reason = ensure_session_summary(
+            d, args.session_json, args.summary_name, args.force
+        )
         if reason == "written":
             created += 1
         elif reason == "already_exists":

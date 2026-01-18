@@ -1,12 +1,14 @@
 # src/core/emotion/emotion_infer.py
 from __future__ import annotations
 
-import traceback
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
+import logging
+
+logger = logging.getLogger("src.core.emotion.emotion_infer")
 
 
 @dataclass
@@ -21,10 +23,13 @@ class EmotionResult:
 class HSEmotionDetector:
     def __init__(self, device: str = "cpu"):
         self._printed_error = False
-        print("[HSEmotionDetector] Chargement du modèle HSEmotion...")
+        logger.info("Loading HSEmotion model...")
         from hsemotion.facial_emotions import HSEmotionRecognizer
-        self.model = HSEmotionRecognizer(model_name="enet_b0_8_best_vgaf", device=device)
-        print("[HSEmotionDetector] Modèle chargé")
+
+        self.model = HSEmotionRecognizer(
+            model_name="enet_b0_8_best_vgaf", device=device
+        )
+        logger.info("HSEmotion model loaded")
 
     def analyze(self, img_bgr: np.ndarray) -> Tuple[Optional[str], float]:
         if img_bgr is None or img_bgr.size == 0:
@@ -38,8 +43,7 @@ class HSEmotionDetector:
         except Exception:
             if not self._printed_error:
                 self._printed_error = True
-                print("[HSEmotionDetector] ERREUR (affichée une fois) :")
-                traceback.print_exc()
+                logger.error("HSEmotion Error (logged once):", exc_info=True)
             return None, 0.0
 
 
@@ -52,6 +56,7 @@ class EmotionInfer:
     - Si conf >= hse_threshold => "hsemotion"
     - Sinon => "hsemotion_low" (on affiche quand même l'émotion)
     """
+
     def __init__(
         self,
         device: str = "cpu",

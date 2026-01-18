@@ -1,5 +1,6 @@
-from typing import List, Optional, Any, Dict
+from typing import List, Optional
 from pydantic import BaseModel
+
 
 # Video Models
 class VideoResponse(BaseModel):
@@ -14,10 +15,12 @@ class VideoResponse(BaseModel):
     thumbnail_url: Optional[str] = None
     stats: Optional[dict] = None
 
+
 class VideoListResponse(BaseModel):
     videos: List[VideoResponse]
     total: int
     pagination: dict
+
 
 # Trash Models
 class TrashItemResponse(BaseModel):
@@ -28,10 +31,12 @@ class TrashItemResponse(BaseModel):
     deleted_at: str
     size_mb: Optional[float]
 
+
 # Pipeline Models
 class PipelineRunRequest(BaseModel):
     video_name: str
     options: Optional[dict] = None
+
 
 class PipelineJobResponse(BaseModel):
     job_id: str
@@ -43,6 +48,7 @@ class PipelineJobResponse(BaseModel):
     progress: Optional[dict]
     logs: List[str]
     error: Optional[str]
+
 
 # Stats Models
 class StatsResponse(BaseModel):
@@ -56,6 +62,7 @@ class StatsResponse(BaseModel):
     trash_stats: dict
     emotion_distribution: Optional[dict] = None
 
+
 # Realtime Models
 class RealtimeConfigRequest(BaseModel):
     camera_id: int = 0
@@ -64,6 +71,7 @@ class RealtimeConfigRequest(BaseModel):
     save_json: bool = True
     save_video: bool = True
     visualize: bool = True
+
 
 class RealtimeStatusResponse(BaseModel):
     session_id: str

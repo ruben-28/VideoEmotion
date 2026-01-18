@@ -16,14 +16,16 @@ from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 
 import yaml
-import yaml
 
 # Handling optional DeepFace due to frequent TF/Protobuf conflicts
 try:
     from deepface import DeepFace
+
     DEEPFACE_AVAILABLE = True
 except ImportError:
-    print("[WARNING] DeepFace could not be imported (dependency issue?). Running in HSEmotion-only mode.")
+    print(
+        "[WARNING] DeepFace could not be imported (dependency issue?). Running in HSEmotion-only mode."
+    )
     DEEPFACE_AVAILABLE = False
 except Exception as e:
     print(f"[WARNING] DeepFace import crashed: {e}. Running in HSEmotion-only mode.")
@@ -65,6 +67,7 @@ UNCERTAIN_MIN_CONF = 0.55
 # CONFIG HELPERS (YAML)
 # =============================================================================
 
+
 def load_config(config_path: Path) -> Dict[str, Any]:
     if not config_path.exists():
         return {}
@@ -75,6 +78,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     except Exception:
         return {}
 
+
 def cfg_get(cfg: Dict[str, Any], *keys, default=None):
     cur: Any = cfg
     for k in keys:
@@ -83,11 +87,13 @@ def cfg_get(cfg: Dict[str, Any], *keys, default=None):
         cur = cur[k]
     return cur
 
+
 def resolve_from_project(project_root: Path, p: Optional[str]) -> Path:
     if p is None:
         return project_root
     pp = Path(p)
     return pp.resolve() if pp.is_absolute() else (project_root / pp).resolve()
+
 
 def apply_config_overrides(cfg: Dict[str, Any]) -> None:
     """
@@ -100,47 +106,168 @@ def apply_config_overrides(cfg: Dict[str, Any]) -> None:
     global ENABLE_TTA, TTA_ROT_DEG, TTA_BRIGHT_FACTOR, TTA_MAX_VARIANTS
     global ENABLE_SMOOTHING, CENTERED_SMOOTH_WINDOW
     global ENABLE_SMOOTHING_SCORE, SMOOTH_SCORE_USE_FINAL
-    global RUN_DEEPFACE_ALWAYS, HSEMOTION_CONFIDENCE_THRESHOLD, DEEPFACE_CONFIDENCE_THRESHOLD
+    global \
+        RUN_DEEPFACE_ALWAYS, \
+        HSEMOTION_CONFIDENCE_THRESHOLD, \
+        DEEPFACE_CONFIDENCE_THRESHOLD
     global ENABLE_UNCERTAIN_CLASS, UNCERTAIN_MIN_CONF
 
     # Quality
-    MIN_FACE_SIZE = int(cfg_get(cfg, "face_detection", "quality_filters", "min_face_size", default=MIN_FACE_SIZE))
-    BLUR_MIN_VAR_LAPLACIAN = float(cfg_get(cfg, "emotion_analysis", "quality", "blur_min_laplacian", default=BLUR_MIN_VAR_LAPLACIAN))
-    BRIGHTNESS_MIN = float(cfg_get(cfg, "emotion_analysis", "quality", "brightness_min", default=BRIGHTNESS_MIN))
-    BRIGHTNESS_MAX = float(cfg_get(cfg, "emotion_analysis", "quality", "brightness_max", default=BRIGHTNESS_MAX))
+    MIN_FACE_SIZE = int(
+        cfg_get(
+            cfg,
+            "face_detection",
+            "quality_filters",
+            "min_face_size",
+            default=MIN_FACE_SIZE,
+        )
+    )
+    BLUR_MIN_VAR_LAPLACIAN = float(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "quality",
+            "blur_min_laplacian",
+            default=BLUR_MIN_VAR_LAPLACIAN,
+        )
+    )
+    BRIGHTNESS_MIN = float(
+        cfg_get(
+            cfg, "emotion_analysis", "quality", "brightness_min", default=BRIGHTNESS_MIN
+        )
+    )
+    BRIGHTNESS_MAX = float(
+        cfg_get(
+            cfg, "emotion_analysis", "quality", "brightness_max", default=BRIGHTNESS_MAX
+        )
+    )
 
     # DeepFace settings
-    DEEPFACE_DETECTOR_BACKEND = str(cfg_get(cfg, "emotion_analysis", "deepface", "detector_backend", default=DEEPFACE_DETECTOR_BACKEND))
-    DEEPFACE_ENFORCE_DETECTION = bool(cfg_get(cfg, "emotion_analysis", "deepface", "enforce_detection", default=DEEPFACE_ENFORCE_DETECTION))
+    DEEPFACE_DETECTOR_BACKEND = str(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "deepface",
+            "detector_backend",
+            default=DEEPFACE_DETECTOR_BACKEND,
+        )
+    )
+    DEEPFACE_ENFORCE_DETECTION = bool(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "deepface",
+            "enforce_detection",
+            default=DEEPFACE_ENFORCE_DETECTION,
+        )
+    )
 
     # TTA
-    ENABLE_TTA = bool(cfg_get(cfg, "emotion_analysis", "tta", "enabled", default=ENABLE_TTA))
-    TTA_ROT_DEG = float(cfg_get(cfg, "emotion_analysis", "tta", "rotation_deg", default=TTA_ROT_DEG))
-    TTA_BRIGHT_FACTOR = float(cfg_get(cfg, "emotion_analysis", "tta", "brightness_factor", default=TTA_BRIGHT_FACTOR))
-    TTA_MAX_VARIANTS = int(cfg_get(cfg, "emotion_analysis", "tta", "max_variants", default=TTA_MAX_VARIANTS))
+    ENABLE_TTA = bool(
+        cfg_get(cfg, "emotion_analysis", "tta", "enabled", default=ENABLE_TTA)
+    )
+    TTA_ROT_DEG = float(
+        cfg_get(cfg, "emotion_analysis", "tta", "rotation_deg", default=TTA_ROT_DEG)
+    )
+    TTA_BRIGHT_FACTOR = float(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "tta",
+            "brightness_factor",
+            default=TTA_BRIGHT_FACTOR,
+        )
+    )
+    TTA_MAX_VARIANTS = int(
+        cfg_get(
+            cfg, "emotion_analysis", "tta", "max_variants", default=TTA_MAX_VARIANTS
+        )
+    )
 
     # Smoothing
-    ENABLE_SMOOTHING = bool(cfg_get(cfg, "emotion_analysis", "smoothing", "enabled", default=ENABLE_SMOOTHING))
-    CENTERED_SMOOTH_WINDOW = int(cfg_get(cfg, "emotion_analysis", "smoothing", "window", default=CENTERED_SMOOTH_WINDOW))
-    ENABLE_SMOOTHING_SCORE = bool(cfg_get(cfg, "emotion_analysis", "smoothing_score", "enabled", default=ENABLE_SMOOTHING_SCORE))
-    SMOOTH_SCORE_USE_FINAL = bool(cfg_get(cfg, "emotion_analysis", "smoothing_score", "use_final", default=SMOOTH_SCORE_USE_FINAL))
+    ENABLE_SMOOTHING = bool(
+        cfg_get(
+            cfg, "emotion_analysis", "smoothing", "enabled", default=ENABLE_SMOOTHING
+        )
+    )
+    CENTERED_SMOOTH_WINDOW = int(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "smoothing",
+            "window",
+            default=CENTERED_SMOOTH_WINDOW,
+        )
+    )
+    ENABLE_SMOOTHING_SCORE = bool(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "smoothing_score",
+            "enabled",
+            default=ENABLE_SMOOTHING_SCORE,
+        )
+    )
+    SMOOTH_SCORE_USE_FINAL = bool(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "smoothing_score",
+            "use_final",
+            default=SMOOTH_SCORE_USE_FINAL,
+        )
+    )
 
     # Thresholds / logic
-    RUN_DEEPFACE_ALWAYS = bool(cfg_get(cfg, "emotion_analysis", "run_deepface_always", default=RUN_DEEPFACE_ALWAYS))
-    HSEMOTION_CONFIDENCE_THRESHOLD = float(cfg_get(cfg, "emotion_analysis", "hsemotion", "confidence_threshold", default=HSEMOTION_CONFIDENCE_THRESHOLD))
-    DEEPFACE_CONFIDENCE_THRESHOLD = float(cfg_get(cfg, "emotion_analysis", "deepface", "confidence_threshold", default=DEEPFACE_CONFIDENCE_THRESHOLD))
+    RUN_DEEPFACE_ALWAYS = bool(
+        cfg_get(
+            cfg, "emotion_analysis", "run_deepface_always", default=RUN_DEEPFACE_ALWAYS
+        )
+    )
+    HSEMOTION_CONFIDENCE_THRESHOLD = float(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "hsemotion",
+            "confidence_threshold",
+            default=HSEMOTION_CONFIDENCE_THRESHOLD,
+        )
+    )
+    DEEPFACE_CONFIDENCE_THRESHOLD = float(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "deepface",
+            "confidence_threshold",
+            default=DEEPFACE_CONFIDENCE_THRESHOLD,
+        )
+    )
 
-    ENABLE_UNCERTAIN_CLASS = bool(cfg_get(cfg, "emotion_analysis", "uncertain", "enabled", default=ENABLE_UNCERTAIN_CLASS))
-    UNCERTAIN_MIN_CONF = float(cfg_get(cfg, "emotion_analysis", "uncertain", "min_conf", default=UNCERTAIN_MIN_CONF))
+    ENABLE_UNCERTAIN_CLASS = bool(
+        cfg_get(
+            cfg,
+            "emotion_analysis",
+            "uncertain",
+            "enabled",
+            default=ENABLE_UNCERTAIN_CLASS,
+        )
+    )
+    UNCERTAIN_MIN_CONF = float(
+        cfg_get(
+            cfg, "emotion_analysis", "uncertain", "min_conf", default=UNCERTAIN_MIN_CONF
+        )
+    )
 
 
 # =============================================================================
 # UTIL PARSING
 # =============================================================================
 
+
 def parse_frame_index(filename: str) -> int:
     m = re.search(r"frame_(\d+)", filename.lower())
     return int(m.group(1)) if m else -1
+
 
 def parse_face_id(filename: str) -> int:
     try:
@@ -148,7 +275,7 @@ def parse_face_id(filename: str) -> int:
         for key in ("track", "face"):
             idx = lower.rfind(key)
             if idx != -1:
-                tail = lower[idx + len(key):]
+                tail = lower[idx + len(key) :]
                 digits = ""
                 for ch in tail:
                     if ch.isdigit():
@@ -160,13 +287,14 @@ def parse_face_id(filename: str) -> int:
     except Exception:
         return -1
 
+
 def parse_track_id(filename: str) -> int:
     try:
         lower = filename.lower()
         idx = lower.rfind("track")
         if idx == -1:
             return -1
-        tail = lower[idx + 5:]
+        tail = lower[idx + 5 :]
         digits = ""
         for ch in tail:
             if ch.isdigit():
@@ -177,6 +305,7 @@ def parse_track_id(filename: str) -> int:
     except Exception:
         return -1
 
+
 def identity_id(face_id: int, track_id: int) -> int:
     return track_id if track_id != -1 else face_id
 
@@ -185,12 +314,14 @@ def identity_id(face_id: int, track_id: int) -> int:
 # GLOBAL PERSON ID (UNIQUE ACROSS VIDEOS)
 # =============================================================================
 
+
 def _norm_key(s: str) -> str:
     """Normalise en clé stable: slash/backslash/espaces -> '_'."""
     s = (s or "").replace("\\", "/").strip("/")
     s = re.sub(r"\s+", "_", s)
     s = s.replace("/", "_")
     return s
+
 
 def extract_person_folder(rel_dir: str) -> Optional[str]:
     """
@@ -206,6 +337,7 @@ def extract_person_folder(rel_dir: str) -> Optional[str]:
             return f"person_{int(num):04d}"
     return None
 
+
 def extract_video_key(rel_dir: str) -> str:
     """
     Déduit la 'vidéo' à partir de rel_dir en supprimant person_XXXX.
@@ -215,9 +347,12 @@ def extract_video_key(rel_dir: str) -> str:
     if not rel_dir:
         return "unknown_video"
     parts = [p for p in rel_dir.replace("\\", "/").split("/") if p]
-    parts = [p for p in parts if not re.fullmatch(r"person[_-]?\d+", p, flags=re.IGNORECASE)]
+    parts = [
+        p for p in parts if not re.fullmatch(r"person[_-]?\d+", p, flags=re.IGNORECASE)
+    ]
     key = "_".join(parts) if parts else "unknown_video"
     return _norm_key(key)
+
 
 def make_global_person_id(rel_dir: str, identity_id_int: int) -> str:
     """
@@ -235,11 +370,13 @@ def make_global_person_id(rel_dir: str, identity_id_int: int) -> str:
 # MASTER JSON
 # =============================================================================
 
+
 def load_master_json(master_json_path: str) -> dict:
     if os.path.exists(master_json_path):
         with open(master_json_path, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
+
 
 def save_master_json(master: dict, master_json_path: str):
     os.makedirs(os.path.dirname(master_json_path), exist_ok=True)
@@ -251,6 +388,7 @@ def save_master_json(master: dict, master_json_path: str):
 # QUALITY METRICS
 # =============================================================================
 
+
 def face_quality_metrics(face_bgr: np.ndarray) -> Dict[str, float]:
     if face_bgr is None or face_bgr.size == 0:
         return {"blur": 0.0, "brightness": 0.0, "contrast": 0.0, "area": 0.0}
@@ -261,6 +399,7 @@ def face_quality_metrics(face_bgr: np.ndarray) -> Dict[str, float]:
     contrast = float(np.std(gray))
     area = float(face_bgr.shape[0] * face_bgr.shape[1])
     return {"blur": blur, "brightness": brightness, "contrast": contrast, "area": area}
+
 
 def is_bad_quality(q: Dict[str, float]) -> bool:
     if q["area"] <= 0:
@@ -275,6 +414,7 @@ def is_bad_quality(q: Dict[str, float]) -> bool:
 # =============================================================================
 # TTA
 # =============================================================================
+
 
 def tta_variants(face_bgr: np.ndarray) -> List[np.ndarray]:
     variants = [face_bgr]
@@ -292,9 +432,7 @@ def tta_variants(face_bgr: np.ndarray) -> List[np.ndarray]:
     h, w = face_bgr.shape[:2]
     M = cv2.getRotationMatrix2D((w / 2, h / 2), TTA_ROT_DEG, 1.0)
     rot = cv2.warpAffine(
-        face_bgr, M, (w, h),
-        flags=cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_REFLECT
+        face_bgr, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT
     )
     variants.append(rot)
 
@@ -305,17 +443,20 @@ def tta_variants(face_bgr: np.ndarray) -> List[np.ndarray]:
 # SMOOTHING + SCORE
 # =============================================================================
 
+
 def centered_mode(values: List[Optional[str]]) -> Optional[str]:
     vals = [v for v in values if v is not None]
     if not vals:
         return None
     return Counter(vals).most_common(1)[0][0]
 
+
 def _safe_float(x, default=0.0) -> float:
     try:
         return float(x)
     except Exception:
         return default
+
 
 def compute_smoothing_score(
     emotions_window: List[Optional[str]],
@@ -336,7 +477,10 @@ def compute_smoothing_score(
     smoothing_score = vote_ratio * avg_conf
     return smoothed_emotion, smoothing_score, vote_ratio, avg_conf
 
-def apply_centered_smoothing(entries: List[dict], window: int, key_emotion: str, out_key: str):
+
+def apply_centered_smoothing(
+    entries: List[dict], window: int, key_emotion: str, out_key: str
+):
     if window % 2 != 1 or window < 3:
         raise ValueError("window doit être impair et >= 3")
 
@@ -348,6 +492,7 @@ def apply_centered_smoothing(entries: List[dict], window: int, key_emotion: str,
         hi = min(n, i + half + 1)
         vals = [entries[j].get(key_emotion) for j in range(lo, hi)]
         entries[i][out_key] = centered_mode(vals)
+
 
 def apply_smoothing_score_on_key(
     entries: List[dict],
@@ -379,6 +524,7 @@ def apply_smoothing_score_on_key(
         entries[i][out_avgconf_key] = float(avg_conf)
         entries[i][out_winsize_key] = int(hi - lo)
 
+
 def apply_centered_smoothing_per_dir(per_dir_rows: Dict[str, List[dict]], window: int):
     for rel_dir, rows in per_dir_rows.items():
         groups: Dict[int, List[dict]] = {}
@@ -389,8 +535,18 @@ def apply_centered_smoothing_per_dir(per_dir_rows: Dict[str, List[dict]], window
         for _, lst in groups.items():
             lst.sort(key=lambda x: int(x.get("frame_index", -1)))
 
-            apply_centered_smoothing(lst, window=window, key_emotion="hse_emotion", out_key="smoothed_hse_emotion")
-            apply_centered_smoothing(lst, window=window, key_emotion="deepface_emotion", out_key="smoothed_deepface_emotion")
+            apply_centered_smoothing(
+                lst,
+                window=window,
+                key_emotion="hse_emotion",
+                out_key="smoothed_hse_emotion",
+            )
+            apply_centered_smoothing(
+                lst,
+                window=window,
+                key_emotion="deepface_emotion",
+                out_key="smoothed_deepface_emotion",
+            )
 
             for r in lst:
                 sh = r.get("smoothed_hse_emotion")
@@ -403,7 +559,8 @@ def apply_centered_smoothing_per_dir(per_dir_rows: Dict[str, List[dict]], window
             if ENABLE_SMOOTHING_SCORE:
                 if SMOOTH_SCORE_USE_FINAL:
                     apply_smoothing_score_on_key(
-                        lst, window=window,
+                        lst,
+                        window=window,
                         emotion_key="final_emotion",
                         conf_key="final_confidence",
                         out_score_key="smoothing_score",
@@ -413,7 +570,8 @@ def apply_centered_smoothing_per_dir(per_dir_rows: Dict[str, List[dict]], window
                     )
                 else:
                     apply_smoothing_score_on_key(
-                        lst, window=window,
+                        lst,
+                        window=window,
                         emotion_key="smoothed_final_emotion",
                         conf_key="final_confidence",
                         out_score_key="smoothing_score",
@@ -423,26 +581,35 @@ def apply_centered_smoothing_per_dir(per_dir_rows: Dict[str, List[dict]], window
                     )
 
                 for r in lst:
-                    r["was_smoothed_changed"] = (r.get("smoothed_final_emotion") != r.get("final_emotion"))
+                    r["was_smoothed_changed"] = r.get(
+                        "smoothed_final_emotion"
+                    ) != r.get("final_emotion")
 
 
 # =============================================================================
 # BACKENDS
 # =============================================================================
 
+
 class DeepFaceEmotionDetector:
-    def __init__(self, detector_backend: str = DEEPFACE_DETECTOR_BACKEND, enforce_detection: bool = DEEPFACE_ENFORCE_DETECTION):
+    def __init__(
+        self,
+        detector_backend: str = DEEPFACE_DETECTOR_BACKEND,
+        enforce_detection: bool = DEEPFACE_ENFORCE_DETECTION,
+    ):
         self.detector_backend = detector_backend
         self.enforce_detection = enforce_detection
         if DEEPFACE_AVAILABLE:
-            print(f"[DeepFaceEmotionDetector] Ready (backend={detector_backend}, enforce={enforce_detection})")
+            print(
+                f"[DeepFaceEmotionDetector] Ready (backend={detector_backend}, enforce={enforce_detection})"
+            )
         else:
             print("[DeepFaceEmotionDetector] DISABLED (DeepFace module not available)")
 
     def analyze_once(self, img_bgr: np.ndarray) -> Tuple[Optional[str], float]:
         if not DEEPFACE_AVAILABLE:
             return None, 0.0
-            
+
         if img_bgr is None or img_bgr.size == 0:
             return None, 0.0
 
@@ -465,7 +632,9 @@ class DeepFaceEmotionDetector:
         conf = raw / 100.0 if raw > 1.5 else raw
         return dominant, conf
 
-    def analyze(self, img_bgr: np.ndarray, use_tta: bool = False) -> Tuple[Optional[str], float]:
+    def analyze(
+        self, img_bgr: np.ndarray, use_tta: bool = False
+    ) -> Tuple[Optional[str], float]:
         if not DEEPFACE_AVAILABLE:
             return None, 0.0
 
@@ -498,7 +667,10 @@ class HSEmotionDetector:
         self._printed_error = False
         print("[HSEmotionDetector] Chargement du modèle HSEmotion...")
         from hsemotion.facial_emotions import HSEmotionRecognizer
-        self.model = HSEmotionRecognizer(model_name="enet_b0_8_best_vgaf", device=device)
+
+        self.model = HSEmotionRecognizer(
+            model_name="enet_b0_8_best_vgaf", device=device
+        )
         print("[HSEmotionDetector] Modèle chargé")
 
     def analyze_once(self, img_bgr: np.ndarray) -> Tuple[Optional[str], float]:
@@ -509,7 +681,9 @@ class HSEmotionDetector:
         conf = float(np.max(scores)) if scores is not None else 0.0
         return emotion, conf
 
-    def analyze(self, img_bgr: np.ndarray, use_tta: bool = False) -> Tuple[Optional[str], float]:
+    def analyze(
+        self, img_bgr: np.ndarray, use_tta: bool = False
+    ) -> Tuple[Optional[str], float]:
         if not use_tta:
             try:
                 return self.analyze_once(img_bgr)
@@ -542,10 +716,17 @@ class HSEmotionDetector:
 # DECISION LOGIC
 # =============================================================================
 
-def decide_final(hse_emotion, hse_conf, df_emotion, df_conf, quality_bad) -> Tuple[Optional[str], float, str, bool]:
+
+def decide_final(
+    hse_emotion, hse_conf, df_emotion, df_conf, quality_bad
+) -> Tuple[Optional[str], float, str, bool]:
     if ENABLE_UNCERTAIN_CLASS:
         low_both = (hse_conf < UNCERTAIN_MIN_CONF) and (df_conf < UNCERTAIN_MIN_CONF)
-        disagree = (hse_emotion is not None and df_emotion is not None and hse_emotion != df_emotion)
+        disagree = (
+            hse_emotion is not None
+            and df_emotion is not None
+            and hse_emotion != df_emotion
+        )
         if low_both or (quality_bad and disagree):
             return None, 0.0, "uncertain", True
 
@@ -567,7 +748,10 @@ def decide_final(hse_emotion, hse_conf, df_emotion, df_conf, quality_bad) -> Tup
 # SKIP HELPERS (MASTER-BASED)
 # =============================================================================
 
-def dir_fully_processed(rel_dir: str, img_files: List[str], master_results: dict) -> bool:
+
+def dir_fully_processed(
+    rel_dir: str, img_files: List[str], master_results: dict
+) -> bool:
     if not img_files:
         return False
     for fn in img_files:
@@ -580,6 +764,7 @@ def dir_fully_processed(rel_dir: str, img_files: List[str], master_results: dict
 # =============================================================================
 # MAIN PIPELINE
 # =============================================================================
+
 
 @dataclass
 class Task:
@@ -594,7 +779,9 @@ class Task:
     image_path: str
 
 
-def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_path: str):
+def analyze_emotions_incremental(
+    faces_root: str, output_root: str, master_json_path: str
+):
     """
     Pipeline inchangé, paramètres peuvent être overridés via config.yaml.
     """
@@ -612,16 +799,22 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
     for dirpath, _, filenames in os.walk(faces_root):
         rel_dir = os.path.relpath(dirpath, faces_root)
 
-        img_files = [f for f in filenames if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+        img_files = [
+            f for f in filenames if f.lower().endswith((".png", ".jpg", ".jpeg"))
+        ]
         if not img_files:
             continue
 
         # Check if local output exists
         base_dir = "root" if rel_dir == "." else rel_dir
-        local_out_exists = (Path(output_root) / base_dir / "latest" / "analyzed_emotions.json").exists()
+        local_out_exists = (
+            Path(output_root) / base_dir / "latest" / "analyzed_emotions.json"
+        ).exists()
 
         if dir_fully_processed(rel_dir, img_files, master_results) and local_out_exists:
-            print(f"[SKIP] Dossier déjà analysé (master complet + output présent): {rel_dir}")
+            print(
+                f"[SKIP] Dossier déjà analysé (master complet + output présent): {rel_dir}"
+            )
             continue
 
         for filename in img_files:
@@ -642,17 +835,19 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
 
             image_path = os.path.join(dirpath, filename)
 
-            tasks.append(Task(
-                rel_dir=rel_dir,
-                rel_path=rel_path,
-                filename=filename,
-                frame_index=frame_index,
-                face_id=fid,
-                track_id=tid,
-                identity_id=iid,
-                global_person_id=gid,
-                image_path=image_path,
-            ))
+            tasks.append(
+                Task(
+                    rel_dir=rel_dir,
+                    rel_path=rel_path,
+                    filename=filename,
+                    frame_index=frame_index,
+                    face_id=fid,
+                    track_id=tid,
+                    identity_id=iid,
+                    global_person_id=gid,
+                    image_path=image_path,
+                )
+            )
 
     if not tasks:
         print("Aucune nouvelle image à analyser. Tout est déjà à jour")
@@ -680,28 +875,23 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
                 "track_id": t.track_id,
                 "identity_id": t.identity_id,
                 "global_person_id": t.global_person_id,
-
                 "hse_emotion": None,
                 "hse_confidence": 0.0,
                 "deepface_emotion": None,
                 "deepface_confidence": 0.0,
                 "agree": False,
-
                 "final_emotion": None,
                 "final_confidence": 0.0,
                 "final_backend": "too_small",
                 "is_uncertain": True,
-
                 "smoothed_hse_emotion": None,
                 "smoothed_deepface_emotion": None,
                 "smoothed_final_emotion": None,
-
                 "smoothing_score": 0.0,
                 "smoothing_vote_ratio": 0.0,
                 "smoothing_avg_conf_window": 0.0,
                 "smoothing_window_size": 0,
                 "was_smoothed_changed": False,
-
                 "quality_blur": q["blur"],
                 "quality_brightness": q["brightness"],
                 "quality_contrast": q["contrast"],
@@ -719,7 +909,9 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
         hse_emotion, hse_conf = hse_detector.analyze(image, use_tta=ENABLE_TTA)
 
         df_emotion, df_conf = (None, 0.0)
-        if RUN_DEEPFACE_ALWAYS or (hse_emotion is None or hse_conf < HSEMOTION_CONFIDENCE_THRESHOLD):
+        if RUN_DEEPFACE_ALWAYS or (
+            hse_emotion is None or hse_conf < HSEMOTION_CONFIDENCE_THRESHOLD
+        ):
             df_emotion, df_conf = df_detector.analyze(image, use_tta=ENABLE_TTA)
 
         agree = (
@@ -740,28 +932,23 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
             "track_id": t.track_id,
             "identity_id": t.identity_id,
             "global_person_id": t.global_person_id,
-
             "hse_emotion": hse_emotion,
             "hse_confidence": float(hse_conf),
             "deepface_emotion": df_emotion,
             "deepface_confidence": float(df_conf),
             "agree": bool(agree),
-
             "final_emotion": final_emotion,
             "final_confidence": float(final_conf),
             "final_backend": final_backend,
             "is_uncertain": bool(is_uncertain),
-
             "smoothed_hse_emotion": None,
             "smoothed_deepface_emotion": None,
             "smoothed_final_emotion": None,
-
             "smoothing_score": 0.0,
             "smoothing_vote_ratio": 0.0,
             "smoothing_avg_conf_window": 0.0,
             "smoothing_window_size": 0,
             "was_smoothed_changed": False,
-
             "quality_blur": q["blur"],
             "quality_brightness": q["brightness"],
             "quality_contrast": q["contrast"],
@@ -786,12 +973,35 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
     timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
 
     fieldnames = [
-        "relative_path","filename","frame_index","face_id","track_id","identity_id","global_person_id",
-        "hse_emotion","hse_confidence","deepface_emotion","deepface_confidence","agree",
-        "final_emotion","final_confidence","final_backend","is_uncertain",
-        "smoothed_hse_emotion","smoothed_deepface_emotion","smoothed_final_emotion",
-        "smoothing_score","smoothing_vote_ratio","smoothing_avg_conf_window","smoothing_window_size","was_smoothed_changed",
-        "quality_blur","quality_brightness","quality_contrast","quality_area","bad_quality",
+        "relative_path",
+        "filename",
+        "frame_index",
+        "face_id",
+        "track_id",
+        "identity_id",
+        "global_person_id",
+        "hse_emotion",
+        "hse_confidence",
+        "deepface_emotion",
+        "deepface_confidence",
+        "agree",
+        "final_emotion",
+        "final_confidence",
+        "final_backend",
+        "is_uncertain",
+        "smoothed_hse_emotion",
+        "smoothed_deepface_emotion",
+        "smoothed_final_emotion",
+        "smoothing_score",
+        "smoothing_vote_ratio",
+        "smoothing_avg_conf_window",
+        "smoothing_window_size",
+        "was_smoothed_changed",
+        "quality_blur",
+        "quality_brightness",
+        "quality_contrast",
+        "quality_area",
+        "bad_quality",
     ]
 
     for rel_dir, rows in per_dir_rows.items():
@@ -806,10 +1016,18 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
 
         with open(csv_path, mode="w", newline="", encoding="utf-8") as csvfile:
             csvfile.write(f"# Emotions analysis run at {timestamp}\n")
-            csvfile.write(f"# DeepFace backend: {DEEPFACE_DETECTOR_BACKEND}, enforce={DEEPFACE_ENFORCE_DETECTION}\n")
-            csvfile.write(f"# TTA: {ENABLE_TTA}, smoothing: {ENABLE_SMOOTHING} (window={CENTERED_SMOOTH_WINDOW})\n")
-            csvfile.write(f"# Fallback thresholds: HSE={HSEMOTION_CONFIDENCE_THRESHOLD}, DF={DEEPFACE_CONFIDENCE_THRESHOLD}\n")
-            csvfile.write(f"# Smoothing score: {ENABLE_SMOOTHING_SCORE} (use_final={SMOOTH_SCORE_USE_FINAL})\n")
+            csvfile.write(
+                f"# DeepFace backend: {DEEPFACE_DETECTOR_BACKEND}, enforce={DEEPFACE_ENFORCE_DETECTION}\n"
+            )
+            csvfile.write(
+                f"# TTA: {ENABLE_TTA}, smoothing: {ENABLE_SMOOTHING} (window={CENTERED_SMOOTH_WINDOW})\n"
+            )
+            csvfile.write(
+                f"# Fallback thresholds: HSE={HSEMOTION_CONFIDENCE_THRESHOLD}, DF={DEEPFACE_CONFIDENCE_THRESHOLD}\n"
+            )
+            csvfile.write(
+                f"# Smoothing score: {ENABLE_SMOOTHING_SCORE} (use_final={SMOOTH_SCORE_USE_FINAL})\n"
+            )
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for row in rows:
@@ -855,29 +1073,60 @@ def analyze_emotions_incremental(faces_root: str, output_root: str, master_json_
 # CLI
 # =============================================================================
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Analyze emotions from detected faces (VideoEmotion)")
+    parser = argparse.ArgumentParser(
+        description="Analyze emotions from detected faces (VideoEmotion)"
+    )
     parser.add_argument("--faces-root", default=None, help="Override faces root.")
     parser.add_argument("--output-root", default=None, help="Override output root.")
-    parser.add_argument("--master-json", default=None, help="Override master json path.")
-    parser.add_argument("--project-root", default=None, help="Racine du projet (défaut: auto).")
-    parser.add_argument("--config", default=None, help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).")
+    parser.add_argument(
+        "--master-json", default=None, help="Override master json path."
+    )
+    parser.add_argument(
+        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).",
+    )
 
     args = parser.parse_args()
 
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
-    config_path = resolve_from_project(project_root, args.config) if args.config else (project_root / "config.yaml")
+    project_root = (
+        Path(args.project_root).resolve()
+        if args.project_root
+        else Path(__file__).resolve().parents[1]
+    )
+    config_path = (
+        resolve_from_project(project_root, args.config)
+        if args.config
+        else (project_root / "config.yaml")
+    )
     cfg = load_config(config_path)
 
     # Override globals (config -> globals)
     apply_config_overrides(cfg)
 
     # Paths par défaut depuis config
-    cfg_faces_root = cfg_get(cfg, "paths", "detected_faces", default="data/detected_faces")
-    cfg_output_root = cfg_get(cfg, "paths", "emotion_results", default="output/emotion_results")
+    cfg_faces_root = cfg_get(
+        cfg, "paths", "detected_faces", default="data/detected_faces"
+    )
+    cfg_output_root = cfg_get(
+        cfg, "paths", "emotion_results", default="output/emotion_results"
+    )
 
-    faces_root = resolve_from_project(project_root, args.faces_root) if args.faces_root else resolve_from_project(project_root, str(cfg_faces_root))
-    output_root = resolve_from_project(project_root, args.output_root) if args.output_root else resolve_from_project(project_root, str(cfg_output_root))
+    faces_root = (
+        resolve_from_project(project_root, args.faces_root)
+        if args.faces_root
+        else resolve_from_project(project_root, str(cfg_faces_root))
+    )
+    output_root = (
+        resolve_from_project(project_root, args.output_root)
+        if args.output_root
+        else resolve_from_project(project_root, str(cfg_output_root))
+    )
 
     if args.master_json:
         master_json_path = resolve_from_project(project_root, args.master_json)

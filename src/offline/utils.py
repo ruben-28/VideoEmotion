@@ -1,7 +1,7 @@
 # src/offline/utils.py
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 
 def aggregate_video_results(emotion_video_root: Path, output_json_path: Path) -> Path:
@@ -22,7 +22,9 @@ def aggregate_video_results(emotion_video_root: Path, output_json_path: Path) ->
     files = sorted(emotion_video_root.rglob("analyzed_emotions.json"))
 
     if not files:
-        raise FileNotFoundError(f"Aucun analyzed_emotions.json trouvé dans: {emotion_video_root}")
+        raise FileNotFoundError(
+            f"Aucun analyzed_emotions.json trouvé dans: {emotion_video_root}"
+        )
 
     for fp in files:
         try:
@@ -45,8 +47,7 @@ def aggregate_video_results(emotion_video_root: Path, output_json_path: Path) ->
             merged[nk] = v
 
     output_json_path.write_text(
-        json.dumps(merged, ensure_ascii=False, indent=2),
-        encoding="utf-8"
+        json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(f"[OK] Aggregated JSON: {output_json_path} (from {len(files)} files)")
     return output_json_path
@@ -81,9 +82,15 @@ def maybe_find_bboxes_json(detected_video_root: Path, fps: int) -> Optional[Path
 import subprocess
 from typing import Tuple
 
+
 def ffmpeg_available() -> bool:
     try:
-        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(
+            ["ffmpeg", "-version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
         return True
     except Exception:
         return False
@@ -96,21 +103,29 @@ def transcode_to_h264(src: Path, dst: Path) -> Tuple[bool, str]:
     """
     try:
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(src),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-profile:v", "baseline",
-            "-level", "3.0",
-            "-movflags", "+faststart",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(src),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-profile:v",
+            "baseline",
+            "-level",
+            "3.0",
+            "-movflags",
+            "+faststart",
             "-an",
             str(dst),
         ]
         # Run without creating a window on Windows if possible, but subprocess.PIPE usually hides it.
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
         ok = (proc.returncode == 0) and dst.exists()
         msg = proc.stderr[-1500:] if proc.stderr else ""
         return ok, msg
     except Exception as e:
         return False, str(e)
-

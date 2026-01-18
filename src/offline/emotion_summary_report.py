@@ -3,7 +3,7 @@ import json
 import csv
 import argparse
 from dataclasses import dataclass, asdict
-from typing import Dict, Any, List, Tuple, Union, Optional
+from typing import Dict, Any, List, Tuple, Union
 from collections import Counter, defaultdict
 from pathlib import Path
 from datetime import datetime
@@ -21,6 +21,7 @@ FRAME_RE = re.compile(r"frame[_-]?(\d+)", re.IGNORECASE)
 # CONFIG HELPERS (YAML)
 # =============================================================================
 
+
 def load_config(config_path: Path) -> Dict[str, Any]:
     if not config_path.exists():
         return {}
@@ -31,6 +32,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     except Exception:
         return {}
 
+
 def cfg_get(cfg: Dict[str, Any], *keys, default=None):
     cur: Any = cfg
     for k in keys:
@@ -38,6 +40,7 @@ def cfg_get(cfg: Dict[str, Any], *keys, default=None):
             return default
         cur = cur[k]
     return cur
+
 
 def resolve_from_project(project_root: Path, p: Union[str, None]) -> Path:
     if p is None:
@@ -50,8 +53,10 @@ def resolve_from_project(project_root: Path, p: Union[str, None]) -> Path:
 # Helpers
 # =============================================================================
 
+
 def now_ts() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
 
 def safe_float(x, default=0.0) -> float:
     try:
@@ -59,11 +64,13 @@ def safe_float(x, default=0.0) -> float:
     except Exception:
         return default
 
+
 def safe_int(x, default=-1) -> int:
     try:
         return int(x)
     except Exception:
         return default
+
 
 def format_time_from_ms(ms: int) -> str:
     if ms is None or ms < 0:
@@ -74,6 +81,7 @@ def format_time_from_ms(ms: int) -> str:
     mm = (s % 3600) // 60
     ss = s % 60
     return f"{hh:02d}:{mm:02d}:{ss:02d}.{mmm:03d}"
+
 
 def extract_person_id(path: str, rec: Dict[str, Any]) -> str:
     gpid = rec.get("global_person_id", None)
@@ -91,6 +99,7 @@ def extract_person_id(path: str, rec: Dict[str, Any]) -> str:
 
     return "person_0000"
 
+
 def extract_time_ms(path: str, rec: Dict[str, Any]) -> int:
     if rec.get("time_ms", None) is not None:
         return safe_int(rec.get("time_ms"), -1)
@@ -98,6 +107,7 @@ def extract_time_ms(path: str, rec: Dict[str, Any]) -> int:
     if m:
         return safe_int(m.group(1), -1)
     return -1
+
 
 def extract_frame_index(path: str, rec: Dict[str, Any]) -> int:
     if rec.get("frame_index", None) is not None:
@@ -107,9 +117,13 @@ def extract_frame_index(path: str, rec: Dict[str, Any]) -> int:
         return safe_int(m.group(1), -1)
     return -1
 
+
 def choose_emotion(rec: Dict[str, Any], prefer_smoothed: bool = True) -> str:
-    keys = ["smoothed_final_emotion", "final_emotion", "emotion"] if prefer_smoothed else \
-           ["final_emotion", "smoothed_final_emotion", "emotion"]
+    keys = (
+        ["smoothed_final_emotion", "final_emotion", "emotion"]
+        if prefer_smoothed
+        else ["final_emotion", "smoothed_final_emotion", "emotion"]
+    )
 
     for k in keys:
         v = rec.get(k, None)
@@ -117,6 +131,7 @@ def choose_emotion(rec: Dict[str, Any], prefer_smoothed: bool = True) -> str:
             return v.strip().lower()
 
     return "Unknown"
+
 
 def choose_confidence(rec: Dict[str, Any]) -> float:
     v = rec.get("final_confidence", rec.get("confidence", None))
@@ -131,8 +146,10 @@ def choose_confidence(rec: Dict[str, Any]) -> float:
 
     return c
 
+
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
+
 
 def file_mtime(p: Path) -> float:
     try:
@@ -140,9 +157,11 @@ def file_mtime(p: Path) -> float:
     except Exception:
         return 0.0
 
+
 # =============================================================================
 # Data model
 # =============================================================================
+
 
 @dataclass
 class PersonSummary:
@@ -180,7 +199,11 @@ def compute_stability(emotions_in_time: List[str]) -> Tuple[float, int, float]:
 def summarize_person(items: List[Dict[str, Any]], person_id: str) -> PersonSummary:
     items_sorted = sorted(
         items,
-        key=lambda x: (x.get("time_ms", -1), x.get("frame_index", -1), x.get("path", ""))
+        key=lambda x: (
+            x.get("time_ms", -1),
+            x.get("frame_index", -1),
+            x.get("path", ""),
+        ),
     )
 
     emotions = [it["emotion"] for it in items_sorted]
@@ -188,7 +211,9 @@ def summarize_person(items: List[Dict[str, Any]], person_id: str) -> PersonSumma
     n = len(items_sorted)
 
     counter = Counter(emotions)
-    dominant_emotion, dominant_count = counter.most_common(1)[0] if counter else ("Unknown", 0)
+    dominant_emotion, dominant_count = (
+        counter.most_common(1)[0] if counter else ("Unknown", 0)
+    )
     dominant_ratio = (dominant_count / n) if n else 0.0
 
     top_emotions = [(emo, cnt / n if n else 0.0) for emo, cnt in counter.most_common(7)]
@@ -222,11 +247,15 @@ def summarize_person(items: List[Dict[str, Any]], person_id: str) -> PersonSumma
 # IO + compat formats
 # =============================================================================
 
+
 def load_json_any(path: Path) -> Union[Dict[str, Any], List[Any]]:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
-def normalize_master(data: Union[Dict[str, Any], List[Any]], fallback_prefix: str) -> Dict[str, Dict[str, Any]]:
+
+def normalize_master(
+    data: Union[Dict[str, Any], List[Any]], fallback_prefix: str
+) -> Dict[str, Dict[str, Any]]:
     if isinstance(data, dict):
         return {str(k): v for k, v in data.items() if isinstance(v, dict)}
 
@@ -248,9 +277,11 @@ def normalize_master(data: Union[Dict[str, Any], List[Any]], fallback_prefix: st
 
     raise ValueError("Format JSON non supporté (attendu dict ou list).")
 
+
 def write_summary_json(out_path: Path, summary: Dict[str, Any]) -> None:
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
+
 
 def write_people_csv(out_path: Path, people: List[PersonSummary]) -> None:
     fieldnames = [
@@ -273,24 +304,38 @@ def write_people_csv(out_path: Path, people: List[PersonSummary]) -> None:
         w.writeheader()
         for ps in people:
             row = asdict(ps)
-            row["top_emotions"] = "; ".join([f"{e}:{r:.3f}" for e, r in ps.top_emotions])
+            row["top_emotions"] = "; ".join(
+                [f"{e}:{r:.3f}" for e, r in ps.top_emotions]
+            )
             w.writerow(row)
 
-def write_report_txt(out_path: Path, people: List[PersonSummary], session_label: str) -> None:
+
+def write_report_txt(
+    out_path: Path, people: List[PersonSummary], session_label: str
+) -> None:
     lines: List[str] = []
-    lines.append(f"=== Rapport Résumé Émotions (Étape 1) — Session: {session_label} ===\n")
+    lines.append(
+        f"=== Rapport Résumé Émotions (Étape 1) — Session: {session_label} ===\n"
+    )
     for ps in sorted(people, key=lambda x: x.person_id):
         lines.append(f"[{ps.person_id}]")
         lines.append(f"- Frames analysées : {ps.n_frames}")
-        lines.append(f"- Émotion dominante : {ps.dominant_emotion} ({ps.dominant_ratio*100:.1f}%)")
+        lines.append(
+            f"- Émotion dominante : {ps.dominant_emotion} ({ps.dominant_ratio * 100:.1f}%)"
+        )
         lines.append(f"- Confiance moyenne : {ps.avg_confidence:.3f}")
-        lines.append(f"- Stabilité : {ps.stability_score:.3f} (change_rate={ps.change_rate:.3f}, transitions={ps.n_transitions})")
+        lines.append(
+            f"- Stabilité : {ps.stability_score:.3f} (change_rate={ps.change_rate:.3f}, transitions={ps.n_transitions})"
+        )
         lines.append(
             f"- Moment le plus intense : {ps.most_intense_emotion} "
             f"(conf={ps.most_intense_confidence:.3f}) à {ps.most_intense_time} "
             f"(frame={ps.most_intense_frame})"
         )
-        lines.append("- Distribution (top) : " + ", ".join([f"{e} {r*100:.1f}%" for e, r in ps.top_emotions]))
+        lines.append(
+            "- Distribution (top) : "
+            + ", ".join([f"{e} {r * 100:.1f}%" for e, r in ps.top_emotions])
+        )
         lines.append("")
     with out_path.open("w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -299,6 +344,7 @@ def write_report_txt(out_path: Path, people: List[PersonSummary], session_label:
 # =============================================================================
 # Grouping
 # =============================================================================
+
 
 def video_base_key(input_root: Path, json_path: Path) -> Tuple[str, Path]:
     rel = json_path.relative_to(input_root)
@@ -320,6 +366,7 @@ def video_base_key(input_root: Path, json_path: Path) -> Tuple[str, Path]:
     label = str(rel_out).replace("\\", "/")
     return label, rel_out
 
+
 def latest_summary_mtime(out_base_dir: Path) -> float:
     if not out_base_dir.exists():
         return 0.0
@@ -328,6 +375,7 @@ def latest_summary_mtime(out_base_dir: Path) -> float:
         if p.is_file():
             mt = max(mt, file_mtime(p))
     return mt
+
 
 def newest_input_mtime(files: List[Path]) -> float:
     mt = 0.0
@@ -340,7 +388,10 @@ def newest_input_mtime(files: List[Path]) -> float:
 # Pipeline
 # =============================================================================
 
-def build_enriched_records(master: Dict[str, Dict[str, Any]], prefer_smoothed: bool) -> Dict[str, List[Dict[str, Any]]]:
+
+def build_enriched_records(
+    master: Dict[str, Dict[str, Any]], prefer_smoothed: bool
+) -> Dict[str, List[Dict[str, Any]]]:
     per_person: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
     for path, rec in master.items():
@@ -353,44 +404,47 @@ def build_enriched_records(master: Dict[str, Dict[str, Any]], prefer_smoothed: b
         tms = extract_time_ms(path, rec)
         fi = extract_frame_index(path, rec)
 
-        per_person[pid].append({
-            "path": path,
-            "frame_index": fi,
-            "time_ms": tms,
-            "emotion": emotion,
-            "confidence": conf,
-        })
+        per_person[pid].append(
+            {
+                "path": path,
+                "frame_index": fi,
+                "time_ms": tms,
+                "emotion": emotion,
+                "confidence": conf,
+            }
+        )
 
     return per_person
 
 
-
-def compute_timeline(per_person: Dict[str, List[Dict[str, Any]]], fps_approx: int = 5) -> List[Dict[str, Any]]:
+def compute_timeline(
+    per_person: Dict[str, List[Dict[str, Any]]], fps_approx: int = 5
+) -> List[Dict[str, Any]]:
     """Compute aggregated emotion timeline (global) by second"""
     # Collect all items
     all_items = []
     for items in per_person.values():
         all_items.extend(items)
-    
+
     if not all_items:
         return []
 
     # Bucket by second
     buckets: Dict[int, Counter] = defaultdict(Counter)
-    
+
     for item in all_items:
         t_ms = item.get("time_ms", -1)
-        if t_ms < 0: 
+        if t_ms < 0:
             # Fallback to frame index if time not available
             idx = item.get("frame_index", -1)
             if idx >= 0:
                 t_ms = (idx / fps_approx) * 1000
             else:
                 continue
-        
+
         sec = int(t_ms / 1000)
         buckets[sec][item["emotion"]] += 1
-    
+
     # Format outcome
     timeline = []
     if not buckets:
@@ -404,12 +458,9 @@ def compute_timeline(per_person: Dict[str, List[Dict[str, Any]]], fps_approx: in
             dist = {k: round(v / total, 3) for k, v in counts.items()}
         else:
             dist = {}
-        
-        timeline.append({
-            "timestamp": s,
-            "emotions": dist
-        })
-        
+
+        timeline.append({"timestamp": s, "emotions": dist})
+
     return timeline
 
 
@@ -457,17 +508,16 @@ def run_one_video(
         if items:
             people_summaries.append(summarize_person(items, pid))
 
-
-
-
     total_frames = sum(ps.n_frames for ps in people_summaries)
 
     global_counter = Counter()
     for items in per_person.values():
         for it in items:
             global_counter[it["emotion"]] += 1
-    global_dominant = global_counter.most_common(1)[0][0] if global_counter else "Unknown"
-    
+    global_dominant = (
+        global_counter.most_common(1)[0][0] if global_counter else "Unknown"
+    )
+
     # Compute timeline
     timeline = compute_timeline(per_person)
 
@@ -479,12 +529,17 @@ def run_one_video(
         "n_people": len(people_summaries),
         "total_frames": total_frames,
         "global_dominant_emotion": global_dominant,
-        "global_distribution": {k: (v / total_frames if total_frames else 0.0) for k, v in global_counter.items()},
+        "global_distribution": {
+            k: (v / total_frames if total_frames else 0.0)
+            for k, v in global_counter.items()
+        },
         "timeline": timeline,
         "people": [
             {
                 **asdict(ps),
-                "top_emotions": [{"emotion": e, "ratio": r} for e, r in ps.top_emotions],
+                "top_emotions": [
+                    {"emotion": e, "ratio": r} for e, r in ps.top_emotions
+                ],
             }
             for ps in sorted(people_summaries, key=lambda x: x.person_id)
         ],
@@ -492,7 +547,9 @@ def run_one_video(
 
     write_summary_json(out_dir / "summary.json", summary)
     write_people_csv(out_dir / "summary_people.csv", people_summaries)
-    write_report_txt(out_dir / "report.txt", people_summaries, session_label=group_label)
+    write_report_txt(
+        out_dir / "report.txt", people_summaries, session_label=group_label
+    )
 
     return "ok"
 
@@ -501,15 +558,36 @@ def run_one_video(
 # Main (CLI + config)
 # =============================================================================
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate emotion summary reports (VideoEmotion)")
-    parser.add_argument("--input-dir", default=None, help="Override input dir (CLI > config > default).")
-    parser.add_argument("--output-dir", default=None, help="Override output dir (CLI > config > default).")
-    parser.add_argument("--prefer-smoothed", action="store_true", help="Force prefer_smoothed=True.")
-    parser.add_argument("--no-prefer-smoothed", action="store_true", help="Force prefer_smoothed=False.")
-    parser.add_argument("--force", action="store_true", help="Force regen even if summary is newer.")
-    parser.add_argument("--project-root", default=None, help="Racine du projet (défaut: auto).")
-    parser.add_argument("--config", default=None, help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).")
+    parser = argparse.ArgumentParser(
+        description="Generate emotion summary reports (VideoEmotion)"
+    )
+    parser.add_argument(
+        "--input-dir", default=None, help="Override input dir (CLI > config > default)."
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Override output dir (CLI > config > default).",
+    )
+    parser.add_argument(
+        "--prefer-smoothed", action="store_true", help="Force prefer_smoothed=True."
+    )
+    parser.add_argument(
+        "--no-prefer-smoothed", action="store_true", help="Force prefer_smoothed=False."
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Force regen even if summary is newer."
+    )
+    parser.add_argument(
+        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).",
+    )
 
     parser.add_argument(
         "--only-session",
@@ -519,19 +597,37 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[1]
-    config_path = resolve_from_project(project_root, args.config) if args.config else (project_root / "config.yaml")
+    project_root = (
+        Path(args.project_root).resolve()
+        if args.project_root
+        else Path(__file__).resolve().parents[1]
+    )
+    config_path = (
+        resolve_from_project(project_root, args.config)
+        if args.config
+        else (project_root / "config.yaml")
+    )
     cfg = load_config(config_path)
 
-    cfg_input = cfg_get(cfg, "paths", "emotion_results", default="output/emotion_results")
+    cfg_input = cfg_get(
+        cfg, "paths", "emotion_results", default="output/emotion_results"
+    )
     cfg_output = cfg_get(cfg, "paths", "reports", default="output/reports")
-    
+
     # Force default structure if using generic reports path
     if str(cfg_output).replace("\\", "/").rstrip("/") == "output/reports":
         cfg_output = "output/reports/offline"
 
-    input_root = resolve_from_project(project_root, args.input_dir) if args.input_dir else resolve_from_project(project_root, str(cfg_input))
-    out_root = resolve_from_project(project_root, args.output_dir) if args.output_dir else resolve_from_project(project_root, str(cfg_output))
+    input_root = (
+        resolve_from_project(project_root, args.input_dir)
+        if args.input_dir
+        else resolve_from_project(project_root, str(cfg_input))
+    )
+    out_root = (
+        resolve_from_project(project_root, args.output_dir)
+        if args.output_dir
+        else resolve_from_project(project_root, str(cfg_output))
+    )
 
     prefer_smoothed = bool(cfg_get(cfg, "summary", "prefer_smoothed", default=True))
     if args.prefer_smoothed:
@@ -573,9 +669,13 @@ def main() -> None:
     # ✅ Filter sur une seule session si demandé
     if args.only_session:
         wanted = args.only_session.strip().lower()
-        groups = {k: v for k, v in groups.items() if k.strip().lower().startswith(wanted)}
+        groups = {
+            k: v for k, v in groups.items() if k.strip().lower().startswith(wanted)
+        }
         if not groups:
-            print(f"[ERREUR] Aucune session ne correspond à --only-session={args.only_session}")
+            print(
+                f"[ERREUR] Aucune session ne correspond à --only-session={args.only_session}"
+            )
             return
 
     ok = skipped = failed = 0

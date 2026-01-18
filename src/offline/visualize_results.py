@@ -12,10 +12,16 @@ import shutil
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Visualize emotion results on a video (overlay).")
+    p = argparse.ArgumentParser(
+        description="Visualize emotion results on a video (overlay)."
+    )
 
     p.add_argument("--video", required=True, help="Path to original input video")
-    p.add_argument("--results", required=True, help="Path to per-video detailed JSON (frame-level results)")
+    p.add_argument(
+        "--results",
+        required=True,
+        help="Path to per-video detailed JSON (frame-level results)",
+    )
     p.add_argument(
         "--out",
         required=True,
@@ -31,15 +37,37 @@ def parse_args() -> argparse.Namespace:
         help="Optional JSON containing bbox per (frame_index, track_id). If provided, draws rectangles.",
     )
 
-    p.add_argument("--use-smoothed", action="store_true", help="Use smoothed_final_emotion when available")
-    p.add_argument("--max-persons", type=int, default=8, help="Max persons to display as text per frame")
-    p.add_argument("--show-confidence", action="store_true", help="Show confidence next to emotion")
-    p.add_argument("--show-backend", action="store_true", help="Show backend used (hsemotion/deepface)")
+    p.add_argument(
+        "--use-smoothed",
+        action="store_true",
+        help="Use smoothed_final_emotion when available",
+    )
+    p.add_argument(
+        "--max-persons",
+        type=int,
+        default=8,
+        help="Max persons to display as text per frame",
+    )
+    p.add_argument(
+        "--show-confidence", action="store_true", help="Show confidence next to emotion"
+    )
+    p.add_argument(
+        "--show-backend",
+        action="store_true",
+        help="Show backend used (hsemotion/deepface)",
+    )
     p.add_argument("--font-scale", type=float, default=0.7, help="Text font scale")
     p.add_argument("--thickness", type=int, default=2, help="Text/rectangle thickness")
 
-    p.add_argument("--fps", type=float, default=None, help="Force output FPS (default: input video FPS)")
-    p.add_argument("--limit-frames", type=int, default=None, help="Debug: stop after N frames")
+    p.add_argument(
+        "--fps",
+        type=float,
+        default=None,
+        help="Force output FPS (default: input video FPS)",
+    )
+    p.add_argument(
+        "--limit-frames", type=int, default=None, help="Debug: stop after N frames"
+    )
 
     # --- alignment between video FPS and bbox/results FPS ---
     p.add_argument(
@@ -71,7 +99,9 @@ def parse_args() -> argparse.Namespace:
     )
 
     # --- H264 export ---
-    p.add_argument("--no-h264", action="store_true", help="Disable ffmpeg transcode to *_h264.mp4")
+    p.add_argument(
+        "--no-h264", action="store_true", help="Disable ffmpeg transcode to *_h264.mp4"
+    )
     p.add_argument(
         "--ffmpeg-path",
         default="ffmpeg",
@@ -93,7 +123,9 @@ def load_results(path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def map_video_frame_to_index(fi_video: int, video_fps: float, data_fps: float, offset: int) -> int:
+def map_video_frame_to_index(
+    fi_video: int, video_fps: float, data_fps: float, offset: int
+) -> int:
     if video_fps <= 0:
         video_fps = 25.0
     if data_fps <= 0:
@@ -101,7 +133,9 @@ def map_video_frame_to_index(fi_video: int, video_fps: float, data_fps: float, o
     return int(round(fi_video * (data_fps / video_fps))) + int(offset)
 
 
-def index_results_by_frame(results: Dict[str, Any], use_smoothed: bool) -> Dict[int, List[Dict[str, Any]]]:
+def index_results_by_frame(
+    results: Dict[str, Any], use_smoothed: bool
+) -> Dict[int, List[Dict[str, Any]]]:
     by_frame: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
 
     for _, entry in results.items():
@@ -121,12 +155,16 @@ def index_results_by_frame(results: Dict[str, Any], use_smoothed: bool) -> Dict[
         by_frame[int(fi)].append(entry)
 
     for fi in list(by_frame.keys()):
-        by_frame[fi].sort(key=lambda e: (e.get("track_id", 999999), e.get("face_id", 999999)))
+        by_frame[fi].sort(
+            key=lambda e: (e.get("track_id", 999999), e.get("face_id", 999999))
+        )
 
     return by_frame
 
 
-def load_bboxes(path: Optional[str]) -> Dict[Tuple[int, int], Tuple[int, int, int, int]]:
+def load_bboxes(
+    path: Optional[str],
+) -> Dict[Tuple[int, int], Tuple[int, int, int, int]]:
     if not path:
         return {}
 
@@ -163,12 +201,21 @@ def load_bboxes(path: Optional[str]) -> Dict[Tuple[int, int], Tuple[int, int, in
                 tid = it.get("track_id")
                 if tid is None:
                     continue
-                if "bbox" in it and isinstance(it["bbox"], list) and len(it["bbox"]) == 4:
+                if (
+                    "bbox" in it
+                    and isinstance(it["bbox"], list)
+                    and len(it["bbox"]) == 4
+                ):
                     x, y, w, h = map(int, it["bbox"])
                     out[(fi, int(tid))] = (x, y, w, h)
                 else:
                     if all(k in it for k in ("x", "y", "w", "h")):
-                        x, y, w, h = int(it["x"]), int(it["y"]), int(it["w"]), int(it["h"])
+                        x, y, w, h = (
+                            int(it["x"]),
+                            int(it["y"]),
+                            int(it["w"]),
+                            int(it["h"]),
+                        )
                         out[(fi, int(tid))] = (x, y, w, h)
 
     return out
@@ -227,7 +274,9 @@ def _resolve_ffmpeg(ffmpeg_path_arg: str) -> Optional[str]:
 def transcode_to_h264(ffmpeg_path_arg: str, src: Path, dst: Path) -> bool:
     ffmpeg_bin = _resolve_ffmpeg(ffmpeg_path_arg)
     if not ffmpeg_bin:
-        print("[WARN] ffmpeg introuvable: impossible de générer la version _h264.mp4 (la vidéo RAW est conservée).")
+        print(
+            "[WARN] ffmpeg introuvable: impossible de générer la version _h264.mp4 (la vidéo RAW est conservée)."
+        )
         return False
 
     try:
@@ -332,7 +381,9 @@ def main():
             print(f"[WARN] Could not copy results json: {e}")
         if args.bboxes_json:
             try:
-                shutil.copy2(args.bboxes_json, per_video_dir / Path(args.bboxes_json).name)
+                shutil.copy2(
+                    args.bboxes_json, per_video_dir / Path(args.bboxes_json).name
+                )
             except Exception as e:
                 print(f"[WARN] Could not copy bboxes json: {e}")
 
@@ -364,8 +415,12 @@ def main():
         if not ok:
             break
 
-        fi_results = map_video_frame_to_index(fi_video, in_fps, results_fps, args.bbox_offset)
-        fi_bbox = map_video_frame_to_index(fi_video, in_fps, args.bbox_fps, args.bbox_offset)
+        fi_results = map_video_frame_to_index(
+            fi_video, in_fps, results_fps, args.bbox_offset
+        )
+        fi_bbox = map_video_frame_to_index(
+            fi_video, in_fps, args.bbox_fps, args.bbox_offset
+        )
 
         entries = try_get_entries(by_frame_results, fi_results, args.bbox_tolerance)
         lines: List[str] = []
@@ -415,7 +470,9 @@ def main():
                 )
 
         if lines:
-            draw_text_lines(frame, lines, font_scale=args.font_scale, thickness=args.thickness)
+            draw_text_lines(
+                frame, lines, font_scale=args.font_scale, thickness=args.thickness
+            )
 
         out.write(frame)
         written += 1
@@ -431,12 +488,16 @@ def main():
 
     # ✅ Generate browser-friendly video, while keeping RAW
     if not args.no_h264:
-        dst_out = raw_out_path.with_name(raw_out_path.stem.replace("_raw", "") + "_h264.mp4")
+        dst_out = raw_out_path.with_name(
+            raw_out_path.stem.replace("_raw", "") + "_h264.mp4"
+        )
         if raw_out_path.exists():
             if transcode_to_h264(args.ffmpeg_path, raw_out_path, dst_out):
                 print(f"[OK] Wrote Chrome-friendly H264: {dst_out}")
             else:
-                print("[WARN] La vidéo H264 n'a pas pu être générée (ffmpeg introuvable ou échec).")
+                print(
+                    "[WARN] La vidéo H264 n'a pas pu être générée (ffmpeg introuvable ou échec)."
+                )
 
 
 if __name__ == "__main__":

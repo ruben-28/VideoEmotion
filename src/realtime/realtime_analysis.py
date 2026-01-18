@@ -12,6 +12,13 @@ import json
 import subprocess
 
 from src.core.emotion.emotion_infer import EmotionInfer
+import logging
+
+# Setup Logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger("realtime_analysis")
 
 
 def load_config(config_path: Path) -> Dict[str, Any]:
@@ -46,7 +53,9 @@ def format_time_from_ms(ms: int) -> str:
     return f"{hh:02d}:{mm:02d}:{ss:02d}.{mmm:03d}"
 
 
-def clip_box(x: int, y: int, w: int, h: int, W: int, H: int) -> Tuple[int, int, int, int]:
+def clip_box(
+    x: int, y: int, w: int, h: int, W: int, H: int
+) -> Tuple[int, int, int, int]:
     x = max(0, x)
     y = max(0, y)
     w = max(0, min(w, W - x))
@@ -70,7 +79,9 @@ def pick_largest_detection(detections, W: int, H: int):
             best = (x, y, w, h)
     return best
 
+
 import shutil
+
 
 def transcode_to_h264(src: Path, dst: Path) -> bool:
     """
@@ -80,55 +91,98 @@ def transcode_to_h264(src: Path, dst: Path) -> bool:
     ffmpeg_bin = shutil.which("ffmpeg")
 
     if ffmpeg_bin is None:
-        print("[ERROR] ffmpeg introuvable. Ajoute ffmpeg au PATH ou installe-le.")
+        logger.error("ffmpeg not found. Add it to PATH.")
         return False
 
     try:
         cmd = [
-            ffmpeg_bin, "-y",
-            "-i", str(src),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
+            ffmpeg_bin,
+            "-y",
+            "-i",
+            str(src),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
             "-an",
             str(dst),
         ]
         subprocess.run(cmd, check=True)
         return True
     except Exception as e:
-        print(f"[ERROR] Transcodage ffmpeg échoué: {e}")
+        logger.error(f"FFmpeg cleanup failed: {e}")
         return False
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Realtime emotion analysis (HSEmotion only, largest face).")
-    ap.add_argument("--camera-id", type=int, default=0, help="Webcam index (default 0).")
+    ap = argparse.ArgumentParser(
+        description="Realtime emotion analysis (HSEmotion only, largest face)."
+    )
+    ap.add_argument(
+        "--camera-id", type=int, default=0, help="Webcam index (default 0)."
+    )
     ap.add_argument("--project-root", default=None, help="Project root (default auto).")
-    ap.add_argument("--config", default=None, help="config.yaml path (default <project-root>/config.yaml).")
+    ap.add_argument(
+        "--config",
+        default=None,
+        help="config.yaml path (default <project-root>/config.yaml).",
+    )
 
     # CLI overrides (optional)
-    ap.add_argument("--display-width", type=int, default=None, help="Resize width for display (override config).")
-    ap.add_argument("--min-det-score", type=float, default=None, help="Override min detection score (mediapipe).")
+    ap.add_argument(
+        "--display-width",
+        type=int,
+        default=None,
+        help="Resize width for display (override config).",
+    )
+    ap.add_argument(
+        "--min-det-score",
+        type=float,
+        default=None,
+        help="Override min detection score (mediapipe).",
+    )
     ap.add_argument("--bbox-thickness", type=int, default=3, help="Épaisseur bbox.")
     ap.add_argument("--font-scale", type=float, default=0.9, help="Taille du texte.")
     ap.add_argument("--text-thickness", type=int, default=2, help="Épaisseur du texte.")
 
     # Save settings (Default: ON)
-    ap.add_argument("--no-save-json", action="store_true", help="Désactiver la sauvegarde JSON.")
-    ap.add_argument("--no-save-video", action="store_true", help="Désactiver l'enregistrement vidéo.")
-    ap.add_argument("--no-visualize", action="store_true", help="Désactiver les annotations sur la vidéo.")
-    ap.add_argument("--out-dir", default="output/realtime", help="Dossier de sortie (JSON/vidéo).")
+    ap.add_argument(
+        "--no-save-json", action="store_true", help="Désactiver la sauvegarde JSON."
+    )
+    ap.add_argument(
+        "--no-save-video",
+        action="store_true",
+        help="Désactiver l'enregistrement vidéo.",
+    )
+    ap.add_argument(
+        "--no-visualize",
+        action="store_true",
+        help="Désactiver les annotations sur la vidéo.",
+    )
+    ap.add_argument(
+        "--out-dir", default="output/realtime", help="Dossier de sortie (JSON/vidéo)."
+    )
 
     args = ap.parse_args()
 
     do_save_json = not args.no_save_json
     do_save_video = not args.no_save_video
 
-    project_root = Path(args.project_root).resolve() if args.project_root else Path(__file__).resolve().parents[2]
+    project_root = (
+        Path(args.project_root).resolve()
+        if args.project_root
+        else Path(__file__).resolve().parents[2]
+    )
     config_path = (
         (project_root / "config.yaml")
         if not args.config
-        else (Path(args.config).resolve() if Path(args.config).is_absolute() else (project_root / args.config).resolve())
+        else (
+            Path(args.config).resolve()
+            if Path(args.config).is_absolute()
+            else (project_root / args.config).resolve()
+        )
     )
     cfg = load_config(config_path)
 
@@ -138,20 +192,62 @@ def main():
     mirror_fix = bool(cfg_get(cfg, "realtime", "mirror_fix", default=True))
 
     cfg_display_width = int(cfg_get(cfg, "realtime", "display_width", default=0) or 0)
-    display_width = args.display_width if args.display_width is not None else cfg_display_width
+    display_width = (
+        args.display_width if args.display_width is not None else cfg_display_width
+    )
 
-    hse_thr = float(cfg_get(cfg, "realtime", "emotion", "hse_conf_threshold",
-                            default=cfg_get(cfg, "emotion_analysis", "hsemotion", "confidence_threshold", default=0.65)))
-    enable_uncertain = bool(cfg_get(cfg, "realtime", "emotion", "enable_uncertain",
-                                    default=cfg_get(cfg, "emotion_analysis", "uncertain", "enabled", default=True)))
-    uncertain_min = float(cfg_get(cfg, "realtime", "emotion", "uncertain_min_conf",
-                                  default=cfg_get(cfg, "emotion_analysis", "uncertain", "min_conf", default=0.55)))
+    hse_thr = float(
+        cfg_get(
+            cfg,
+            "realtime",
+            "emotion",
+            "hse_conf_threshold",
+            default=cfg_get(
+                cfg,
+                "emotion_analysis",
+                "hsemotion",
+                "confidence_threshold",
+                default=0.65,
+            ),
+        )
+    )
+    enable_uncertain = bool(
+        cfg_get(
+            cfg,
+            "realtime",
+            "emotion",
+            "enable_uncertain",
+            default=cfg_get(
+                cfg, "emotion_analysis", "uncertain", "enabled", default=True
+            ),
+        )
+    )
+    uncertain_min = float(
+        cfg_get(
+            cfg,
+            "realtime",
+            "emotion",
+            "uncertain_min_conf",
+            default=cfg_get(
+                cfg, "emotion_analysis", "uncertain", "min_conf", default=0.55
+            ),
+        )
+    )
 
     if args.min_det_score is not None:
         min_det_score = float(args.min_det_score)
     else:
-        min_det_score = float(cfg_get(cfg, "realtime", "face_detection", "min_det_score",
-                                      default=cfg_get(cfg, "face_detection", "filters", "min_det_score", default=0.70)))
+        min_det_score = float(
+            cfg_get(
+                cfg,
+                "realtime",
+                "face_detection",
+                "min_det_score",
+                default=cfg_get(
+                    cfg, "face_detection", "filters", "min_det_score", default=0.70
+                ),
+            )
+        )
 
     infer = EmotionInfer(
         device="cpu",
@@ -200,7 +296,7 @@ def main():
         # -------------------------------
         cap = cv2.VideoCapture(args.camera_id)
         if not cap.isOpened():
-            print(f"[ERREUR] Impossible d'ouvrir la caméra id={args.camera_id}")
+            logger.error(f"Cannot open camera id={args.camera_id}")
             return
 
         # Init video writer (if requested)
@@ -212,14 +308,18 @@ def main():
             H0 = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            video_writer = cv2.VideoWriter(str(video_path), fourcc, float(fps_out), (W0, H0))
+            video_writer = cv2.VideoWriter(
+                str(video_path), fourcc, float(fps_out), (W0, H0)
+            )
             if not video_writer.isOpened():
-                print("[WARN] Impossible d'ouvrir VideoWriter, désactivation save-video.")
+                logger.warning("Cannot open VideoWriter, disabling save-video.")
                 video_writer = None
                 do_save_video = False
 
         mp_face = mp.solutions.face_detection
-        with mp_face.FaceDetection(model_selection=1, min_detection_confidence=min_det_score) as face_det:
+        with mp_face.FaceDetection(
+            model_selection=1, min_detection_confidence=min_det_score
+        ) as face_det:
             while True:
                 ok, frame = cap.read()
                 if not ok:
@@ -236,8 +336,10 @@ def main():
                     box = pick_largest_detection(res.detections, W=W, H=H)
                     if box:
                         x, y, w, h = box
-                        face = frame[y:y + h, x:x + w]
-                        face = cv2.resize(face, (224, 224), interpolation=cv2.INTER_LINEAR)
+                        face = frame[y : y + h, x : x + w]
+                        face = cv2.resize(
+                            face, (224, 224), interpolation=cv2.INTER_LINEAR
+                        )
 
                         result = infer.infer(face)
                         emo = result.emotion if result.emotion else "Uncertain"
@@ -246,15 +348,25 @@ def main():
                         if not args.no_visualize:
                             TEXT_COLOR = (255, 255, 255)
                             BG_COLOR = (0, 0, 0)
-                            BBOX_COLOR = (0, 0, 255) if result.is_uncertain else (0, 255, 0)
+                            BBOX_COLOR = (
+                                (0, 0, 255) if result.is_uncertain else (0, 255, 0)
+                            )
 
-                            cv2.rectangle(frame, (x, y), (x + w, y + h), BBOX_COLOR, args.bbox_thickness)
+                            cv2.rectangle(
+                                frame,
+                                (x, y),
+                                (x + w, y + h),
+                                BBOX_COLOR,
+                                args.bbox_thickness,
+                            )
 
                             font = cv2.FONT_HERSHEY_SIMPLEX
                             font_scale = args.font_scale
                             text_thickness = args.text_thickness
 
-                            (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
+                            (text_w, text_h), baseline = cv2.getTextSize(
+                                label, font, font_scale, text_thickness
+                            )
                             tx = x
                             ty = max(text_h + 10, y - 10)
 
@@ -263,7 +375,7 @@ def main():
                                 (tx, ty - text_h - baseline - 6),
                                 (tx + text_w + 10, ty + 6),
                                 BG_COLOR,
-                                thickness=-1
+                                thickness=-1,
                             )
                             cv2.putText(
                                 frame,
@@ -273,7 +385,7 @@ def main():
                                 font_scale,
                                 TEXT_COLOR,
                                 text_thickness,
-                                cv2.LINE_AA
+                                cv2.LINE_AA,
                             )
 
                         if do_save_json and json_path is not None:
@@ -282,20 +394,28 @@ def main():
                                 session_start_ms = t_ms
                             t_rel = max(0, t_ms - session_start_ms)
 
-                            records.append({
-                                "time_ms": t_ms,
-                                "t_rel_ms": t_rel,
-                                "timestamp": format_time_from_ms(t_rel),
-                                "emotion": emo,
-                                "confidence": float(result.confidence),
-                                "backend": str(result.backend),
-                                "is_uncertain": bool(result.is_uncertain),
-                                "bbox": [int(x), int(y), int(w), int(h)],
-                            })
+                            records.append(
+                                {
+                                    "time_ms": t_ms,
+                                    "t_rel_ms": t_rel,
+                                    "timestamp": format_time_from_ms(t_rel),
+                                    "emotion": emo,
+                                    "confidence": float(result.confidence),
+                                    "backend": str(result.backend),
+                                    "is_uncertain": bool(result.is_uncertain),
+                                    "bbox": [int(x), int(y), int(w), int(h)],
+                                }
+                            )
                 else:
                     cv2.putText(
-                        frame, "No face", (20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA
+                        frame,
+                        "No face",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.9,
+                        (255, 255, 255),
+                        2,
+                        cv2.LINE_AA,
                     )
 
                 # ✅ Save annotated video (write BEFORE resize)
@@ -326,10 +446,15 @@ def main():
         if do_save_json and json_path is not None:
             try:
                 with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump({"session": session_ts, "records": records}, f, ensure_ascii=False, indent=2)
-                print(f"[OK] JSON sauvegardé: {json_path}")
+                    json.dump(
+                        {"session": session_ts, "records": records},
+                        f,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                logger.info(f"JSON saved: {json_path}")
             except Exception as e:
-                print(f"[WARN] Écriture JSON échouée: {e}")
+                logger.warning(f"JSON save failed: {e}")
 
         # ✅ Ensure BOTH videos exist: session.mp4 + session_h264.mp4
         if do_save_video and video_path is not None:
@@ -343,13 +468,17 @@ def main():
                 if not h264_path.exists():
                     ok = transcode_to_h264(video_path, h264_path)
                     if ok:
-                        print(f"[OK] Vidéo browser-friendly (H264): {h264_path}")
+                        logger.info(f"Browser-friendly video (H264): {h264_path}")
                     else:
-                        print("[WARN] Impossible de générer session_h264.mp4 (ffmpeg a échoué).")
+                        logger.warning(
+                            "Failed to generate session_h264.mp4 (ffmpeg failed)."
+                        )
                 else:
-                    print(f"[SKIP] H264 déjà présent: {h264_path}")
+                    logger.info(f"H264 already exists: {h264_path}")
             else:
-                print("[WARN] Transcodage ignoré (aucune frame écrite ou fichier manquant).")
+                logger.warning(
+                    "Transcoding skipped (no frames written or file missing)."
+                )
 
         cv2.destroyAllWindows()
 
