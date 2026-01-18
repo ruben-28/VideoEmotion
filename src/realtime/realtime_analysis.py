@@ -116,6 +116,7 @@ def main():
     # Save settings (Default: ON)
     ap.add_argument("--no-save-json", action="store_true", help="Désactiver la sauvegarde JSON.")
     ap.add_argument("--no-save-video", action="store_true", help="Désactiver l'enregistrement vidéo.")
+    ap.add_argument("--no-visualize", action="store_true", help="Désactiver les annotations sur la vidéo.")
     ap.add_argument("--out-dir", default="output/realtime", help="Dossier de sortie (JSON/vidéo).")
 
     args = ap.parse_args()
@@ -242,37 +243,38 @@ def main():
                         emo = result.emotion if result.emotion else "Uncertain"
                         label = f"{emo} ({result.confidence:.2f}) [{result.backend}]"
 
-                        TEXT_COLOR = (255, 255, 255)
-                        BG_COLOR = (0, 0, 0)
-                        BBOX_COLOR = (0, 0, 255) if result.is_uncertain else (0, 255, 0)
+                        if not args.no_visualize:
+                            TEXT_COLOR = (255, 255, 255)
+                            BG_COLOR = (0, 0, 0)
+                            BBOX_COLOR = (0, 0, 255) if result.is_uncertain else (0, 255, 0)
 
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), BBOX_COLOR, args.bbox_thickness)
+                            cv2.rectangle(frame, (x, y), (x + w, y + h), BBOX_COLOR, args.bbox_thickness)
 
-                        font = cv2.FONT_HERSHEY_SIMPLEX
-                        font_scale = args.font_scale
-                        text_thickness = args.text_thickness
+                            font = cv2.FONT_HERSHEY_SIMPLEX
+                            font_scale = args.font_scale
+                            text_thickness = args.text_thickness
 
-                        (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
-                        tx = x
-                        ty = max(text_h + 10, y - 10)
+                            (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
+                            tx = x
+                            ty = max(text_h + 10, y - 10)
 
-                        cv2.rectangle(
-                            frame,
-                            (tx, ty - text_h - baseline - 6),
-                            (tx + text_w + 10, ty + 6),
-                            BG_COLOR,
-                            thickness=-1
-                        )
-                        cv2.putText(
-                            frame,
-                            label,
-                            (tx + 5, ty),
-                            font,
-                            font_scale,
-                            TEXT_COLOR,
-                            text_thickness,
-                            cv2.LINE_AA
-                        )
+                            cv2.rectangle(
+                                frame,
+                                (tx, ty - text_h - baseline - 6),
+                                (tx + text_w + 10, ty + 6),
+                                BG_COLOR,
+                                thickness=-1
+                            )
+                            cv2.putText(
+                                frame,
+                                label,
+                                (tx + 5, ty),
+                                font,
+                                font_scale,
+                                TEXT_COLOR,
+                                text_thickness,
+                                cv2.LINE_AA
+                            )
 
                         if do_save_json and json_path is not None:
                             t_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC) or 0)

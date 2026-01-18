@@ -13,92 +13,87 @@ from .models import VideoMetadata, VideoMode, VideoStatus
 from .scanner import VideoScanner
 from .metadata import MetadataStore
 from .stats import StatsCalculator
+from .exceptions import VideoNotFoundError
 
 logger = logging.getLogger(__name__)
 
 class VideoManager:
     """Orchestrator for video management"""
     
-    def __init__(self, project_root: Path, metadata_path: Path, videos_dir: Path, realtime_dir: Path):
+    def __init__(
+        self, 
+        project_root: Path, 
+        scanner: VideoScanner,
+        store: MetadataStore,
+        stats_calculator: StatsCalculator
+    ):
+        """
+        Initialize VideoManager with injected dependencies.
+        
+        Args:
+            project_root: Root path of the project.
+            scanner: Service to scan filesystem for videos.
+            store: Service to persist metadata.
+            stats_calculator: Service to calculate video statistics.
+        """
         self.project_root = Path(project_root)
+        self.scanner = scanner
+        self.store = store
+        self.stats_calculator = stats_calculator
         
-        # Initialize services
-        # In a pure DI world, these would be injected into __init__, 
-        # but for this refactor step we instantiate them here to keep call signature compatible 
-        # (until we fix api.py).
-        self.scanner = VideoScanner(videos_dir, realtime_dir)
-        self.store = MetadataStore(metadata_path)
-        self.stats_calculator = StatsCalculator()
-        
+        # We might still need an executor for internal background tasks if not strictly async everywhere
         self._executor = ThreadPoolExecutor(max_workers=4)
-    
-    async def scan_videos_async(self) -> List[VideoMetadata]:
-        """Scan filesystem asynchronously and update inventory"""
-        loop = asyncio.get_event_loop()
-        
-        # Run scanning in thread pool
-        offline_paths = await loop.run_in_executor(self._executor, self.scanner.scan_offline)
-        realtime_paths = await loop.run_in_executor(self._executor, self.scanner.scan_realtime)
-        
-        # Process results
-        all_videos = []
-        
-        # Process Offline
-        for vid_path in offline_paths:
-            try:
-                meta = self._process_offline_video(vid_path)
-                all_videos.append(meta)
-            except Exception as e:
-                logger.error(f"Error processing offline video {vid_path}: {e}")
-                
-        # Process Realtime
-        for session_dir in realtime_paths:
-            try:
-                meta = self._process_realtime_session(session_dir)
-                all_videos.append(meta)
-            except Exception as e:
-                logger.error(f"Error processing realtime session {session_dir}: {e}")
-                
-        # Update Store
-        for video in all_videos:
-            self.store.set_video(video.id, video.to_dict())
-            
-        self.store.save()
-        logger.info(f"Scanned {len(all_videos)} videos")
-        
-        return all_videos
-    
-    def scan_videos(self) -> List[VideoMetadata]:
-        """Synchronous scan"""
+
+    def _scan_logic(self) -> List[VideoMetadata]:
+        """
+        Internal synchronous logic to scan both offline and realtime videos.
+        This serves as the single source of truth for scanning.
+        """
         offline_paths = self.scanner.scan_offline()
         realtime_paths = self.scanner.scan_realtime()
         
         all_videos = []
+        
+        # Process Offline
         for p in offline_paths:
-             all_videos.append(self._process_offline_video(p))
+            try:
+                all_videos.append(self._process_offline_video(p))
+            except Exception as e:
+                logger.error(f"Error processing offline video {p}: {e}")
+
+        # Process Realtime
         for p in realtime_paths:
-             all_videos.append(self._process_realtime_session(p))
-             
+            try:
+                all_videos.append(self._process_realtime_session(p))
+            except Exception as e:
+                logger.error(f"Error processing realtime session {p}: {e}")
+                
+        # Update Store
         for video in all_videos:
             self.store.set_video(video.id, video.to_dict())
         self.store.save()
         
+        logger.info(f"Scanned {len(all_videos)} videos")
         return all_videos
-    
+
+    def scan_videos(self) -> List[VideoMetadata]:
+        """Synchronous scan"""
+        return self._scan_logic()
+
+    async def scan_videos_async(self) -> List[VideoMetadata]:
+        """
+        Asynchronous scan wrapper.
+        Runs the synchronous logic in a separate thread to avoid blocking the event loop.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._executor, self._scan_logic)
+
     def _process_offline_video(self, video_path: Path) -> VideoMetadata:
         """Process offline video path into metadata"""
         video_name = video_path.stem
         video_id = f"{video_name}_offline"
         
-        # Reconstruct paths (Logic preserved but isolated here)
-        # Ideally this path logic goes into a PathResolver service, but let's keep it here for now
-        # to focus on the content refactor.
         reports_dir = self.project_root / "output" / "reports" / "offline" / video_name
-        
-        # Determine status (simplified check)
-        # For full robustness, we should use the same logic as before, 
-        # but for brevity in this refactor I'm trusting the existence of reports implies processed.
-        # Actually, let's keep the exact logic if possible to be safe.
         frames_dir = self.project_root / "data" / "extracted_frames" / video_name
         results_dir = self.project_root / "output" / "emotion_results" / video_name
         
@@ -176,11 +171,11 @@ class VideoManager:
             return VideoMetadata.from_dict(data)
         return None
     
-    def list_videos(self, mode=None, status=None, sort_by="created_at", sort_order="desc") -> List[VideoMetadata]:
+    def list_videos(self, mode: Optional[VideoMode] = None, status: Optional[VideoStatus] = None, sort_by="created_at", sort_order="desc") -> List[VideoMetadata]:
         raw_videos = self.store.list_videos().values()
         videos = [VideoMetadata.from_dict(v) for v in raw_videos]
         
-        # Filter
+        # Filter (Using robust comparison)
         if mode:
             target_mode = mode.value if hasattr(mode, "value") else str(mode)
             videos = [
@@ -195,49 +190,42 @@ class VideoManager:
             ]
             
         # Sort
-        reverse = (sort_order == "desc")
+        reverse = (sort_order.lower() == "desc")
         if sort_by == "name":
             videos.sort(key=lambda v: v.name.lower(), reverse=reverse)
         elif sort_by == "status":
             videos.sort(key=lambda v: v.status.value, reverse=reverse)
         else:
+            # Default to created_at
             videos.sort(key=lambda v: v.created_at, reverse=reverse)
             
         return videos
 
     def batch_get_videos_async(self, video_ids: List[str]):
-         # simple wrapper
          loop = asyncio.get_event_loop()
          return loop.run_in_executor(None, lambda: [self.get_video(v) for v in video_ids])
     
     def update_video(self, video_id: str, updates: Dict) -> bool:
         """Update video metadata"""
-        if video_id not in self.metadata["videos"]:
-            return False
+        # Note: Direct metadata manipulation might bypass store in current architecture
+        # Ideally, this should go through store methods
+        # For refactor compatibility we keep broadly same logic but relying on store if possible
+        # But 'updates' is a dict, so we rely on store's list_videos returning a ref or re-fetch
         
-        video_data = self.metadata["videos"][video_id]
-        video_data.update(updates)
-        self._save_metadata()
+        # Current store implementation: list_videos returns a copy/dict
+        # We need to explicitly save back
+        if not self.store.update_video(video_id, updates):
+             return False
         return True
     
     def delete_video_metadata(self, video_id: str) -> bool:
-        """Remove video from metadata (used when moving to trash)"""
-        if video_id not in self.metadata["videos"]:
-            return False
-        
-        del self.metadata["videos"][video_id]
-        self._save_metadata()
-        logger.info(f"Deleted video metadata: {video_id}")
-        return True
+        return self.store.delete_video(video_id)
     
     def add_video_metadata(self, video: VideoMetadata) -> None:
-        """Add or update video metadata"""
-        self.metadata["videos"][video.id] = video.to_dict()
-        self._save_metadata()
-        logger.info(f"Added video metadata: {video.id}")
+        self.store.set_video(video.id, video.to_dict())
+        self.store.save()
     
     def get_unprocessed_videos(self) -> List[VideoMetadata]:
-        """Get list of unprocessed offline videos"""
         return self.list_videos(
             mode=VideoMode.OFFLINE,
             status=VideoStatus.UNPROCESSED
@@ -270,7 +258,6 @@ class VideoManager:
         }
 
     def _calculate_global_emotions(self, videos: List[VideoMetadata]) -> Dict[str, float]:
-        """Calculate global emotion distribution weighted by video duration"""
         from collections import defaultdict
         
         weighted_sums = defaultdict(float)
@@ -280,7 +267,6 @@ class VideoManager:
             if not v.stats or not v.stats.get("global_distribution"):
                 continue
             
-            # Use total_frames as weight, default to 1 if missing but stats exist
             weight = v.stats.get("total_frames", 0)
             if weight == 0: 
                 continue
@@ -297,6 +283,6 @@ class VideoManager:
         return {k: round(v / total_weight, 4) for k, v in weighted_sums.items()}
     
     def __del__(self):
-        """Cleanup executor on deletion"""
         if hasattr(self, '_executor'):
             self._executor.shutdown(wait=False)
+

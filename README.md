@@ -1,347 +1,205 @@
-# Next Steps & Implementations - VideoEmotion Project
+# VideoEmotion: Advanced Emotion Analysis System
 
-Your project has a complete emotion analysis pipeline but needs orchestration and improved configurability. Here's what to implement next.
+**VideoEmotion** is a comprehensive solution for analyzing human emotions in video content. It leverages state-of-the-art computer vision models (MediaPipe, HSEmotion) to detect faces and classify emotions in both offline video files and realtime webcam streams. The system provides a robust FastAPI backend, a modular architecture, and a modern web dashboard for administration.
 
-## Current Pipeline State
+## 1. Project Overview
+
+*   **Goal**: To provide accurate, granular emotion analysis for researchers and developers.
+*   **Core Functions**:
+    *   **Offline Analysis**: Batch process video files to extract frames, detect faces, analyze emotions, and generate detailed reports.
+    *   **Realtime Analysis**: Live webcam stream analysis with instant feedback and recording capabilities.
+    *   **API Management**: A RESTful API to manage video inventory, pipeline jobs, and system statistics.
+*   **Target Users**: CV Researchers, Emotion AI Developers, and System Administrators.
+
+## 2. Key Features
+
+*   **Dual-Mode Processing**: Seamlessly switch between processing archived footage and live streams.
+*   **Modular Pipeline**: Configurable stages (Extraction -> Detection -> Analysis -> Reporting).
+*   **Robust Architecture**:
+    *   **FastAPI Backend**: High-performance, async-ready API.
+    *   **Dependency Injection**: Modular and testable core services (`VideoManager`, `PipelineExecutor`).
+    *   **Data Persistence**: JSON-based metadata and analysis results.
+*   **Dashboard**: Admin interface for full system control (Next.js frontend).
+*   **Container-Ready**: Designed for easy deployment with isolated environments.
+
+## 3. Project Architecture
+
+The project follows a Clean Architecture approach with a clear separation between the API layer, Core business logic, and dedicated Processing workers.
 
 ```mermaid
-graph LR
-    A[Video] --> B[extract_frames.py]
-    B --> C[detect_faces.py]
-    C --> D[analyze_emotion.py]
-    D --> E[emotion_summary_report.py]
-    E --> F[Reports & Summaries]
+graph TD
+    User[User / Dashboard] -->|HTTP REST| API[FastAPI (app/)]
+    API -->|DI| VM[VideoManager]
+    API -->|DI| PE[PipelineExecutor]
+    API -->|DI| TM[TrashManager]
+    
+    subgraph Core Logic
+        VM --> Scanner[VideoScanner]
+        VM --> Store[MetadataStore]
+        PE -->|Subprocess| OfflineWorker[src/offline/pipeline.py]
+    end
+    
+    subgraph Processing
+        OfflineWorker -->|1. Extract| FFmpeg
+        OfflineWorker -->|2. Detect| MediaPipe
+        OfflineWorker -->|3. Analyze| HSEmotion
+        OfflineWorker -->|4. Report| JSON/CSV
+    end
 ```
 
-**Existing Components:**
-1. ✅ `extract_frames.py` - Extracts frames from videos at configurable FPS
-2. ✅ `detect_faces.py` - MediaPipe face detection with tracking
-3. ✅ `analyze_emotion.py` - Dual-model emotion analysis (HSEmotion + DeepFace)
-4. ✅ `emotion_summary_report.py` - Generates comprehensive emotion summaries
+*   **API Layer**: Handles request validation, routing, and response formatting (Pydantic schemas).
+*   **Service Layer**: Orchestrates complex logic (e.g., launching background jobs, calculating stats).
+*   **Worker Layer**: Independent scripts for heavy lifting, ensuring the API remains responsive.
 
-**Issues:**
-- ❌ All scripts have **hardcoded paths**
-- ❌ No unified entry point
-- ❌ Empty `requirements.txt`
-- ❌ No documentation
+## 4. Folder Structure
 
----
+```text
+VideoEmotion/
+├── app/                  # FastAPI Application
+│   ├── routers/          # Modular API Endpoints (videos, trash, pipeline...)
+│   ├── config.py         # Configuration Loader (Env + YAML)
+│   ├── dependencies.py   # Dependency Injection Setup
+│   ├── main.py           # Application Entry Point
+│   └── schemas/          # Pydantic Data Models
+├── src/                  # Core Logic & Workers
+│   ├── core/             # Business Logic (VideoManager, Models...)
+│   ├── offline/          # Offline Pipeline Scripts
+│   ├── realtime/         # Realtime Analysis Scripts
+│   └── utils/            # Shared Utilities
+├── data/                 # Input Data (Videos, Frames, etc.)
+├── output/               # Generated Results (Reports, JSONs)
+├── tests/                # Automated Test Suite
+├── config.yaml           # Project Configuration
+├── .env                  # Server Environment Variables (Secrets)
+└── requirements.txt      # Python Dependencies
+```
 
-## Proposed Changes
+## 5. User Interfaces
 
-### Phase 1: Unified Pipeline Orchestration
+### REST API
+The primary interface is the auto-generated Swagger UI, allowing direct interaction with all system endpoints.
+*   Access: `http://localhost:8000/docs`
+*   Capabilities: Upload/delete videos, start pipelines, view realtime logs, check system health.
 
-#### [NEW] [pipeline.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/pipeline.py)
+*(Placeholder: Insert Swagger UI Screenshot Here)*
 
-**Purpose:** Single entry point to run the complete analysis workflow
+### Admin Dashboard (Frontend)
+A Next.js dashboard consumes the API for a user-friendly experience.
+*   Capabilities: Visual gallery of videos, drag-and-drop uploads, realtime monitoring graphs.
 
-**Features:**
-- Accept video path via CLI
-- Automatically create organized output structure
-- Run all steps sequentially: extract → detect → analyze → report
-- Progress tracking and error handling
-- Skip already-processed steps (incremental)
+## 6. Interesting Code Highlights
 
-**Usage:**
+### Dependency Injection (app/dependencies.py)
+We use `lru_cache` to provide singleton services, ensuring efficient resource usage and easy testing mocking.
+```python
+@lru_cache()
+def get_video_manager() -> VideoManager:
+    return VideoManager(
+        scanner=VideoScanner(...),
+        store=MetadataStore(...),
+        stats_calculator=StatsCalculator()
+    )
+```
+
+### Pipeline Orchestration (src/offline/pipeline.py)
+Accepts extensive CLI arguments to control the pipeline flow, enabling fine-grained control for debugging or batch processing.
+```python
+# Facade pattern for pipeline steps
+if not args.no_extract:
+    extract_frames(...)
+if not args.no_detect:
+    detect_faces(...)
+if not args.no_analyze:
+    analyze_emotions(...)
+```
+
+### Realtime Loop (src/realtime/realtime_analysis.py)
+Runs an optimized OpenCV loop that handles capture, inference, and visualization/recording simultaneously.
+```python
+# Optimized capture + inference loop
+while True:
+    ok, frame = cap.read()
+    # ... Face Detection ...
+    # ... Emotion Inference ...
+    # ... Result Visualization ...
+    if do_save_video:
+        video_writer.write(frame)
+```
+
+## 7. Installation Guide
+
+**Requirements**: Python 3.10+
+
+1.  **Clone & Venv**:
+    ```bash
+    git clone https://github.com/your-org/VideoEmotion.git
+    cd VideoEmotion
+    python -m venv venv
+    # Windows
+    venv\Scripts\activate
+    # Linux/Mac
+    source venv/bin/activate
+    ```
+
+2.  **Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    pip install pydantic-settings pytest
+    ```
+
+3.  **Configuration**:
+    *   Copy `.env.example` to `.env` and set `HOST`, `PORT`, etc.
+    *   Verify paths in `config.yaml`.
+
+## 8. Running the Project
+
+### Start Backend API
 ```bash
-python src/pipeline.py --video data/videos/my_video.mp4 --fps 5
+venv\Scripts\python -m app.main
 ```
+Server will start at `http://localhost:8000`.
 
----
-
-### Phase 2: Remove Hardcoded Paths
-
-#### [MODIFY] [extract_frames.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/extract_frames.py)
-- Add `argparse` for `--video`, `--output`, `--fps`
-- Keep skip logic (lines 98-102)
-
-#### [MODIFY] [detect_faces.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/detect_faces.py)
-- Add `argparse` for `--input-frames`, `--output-faces`
-- Keep skip logic (lines 523-575)
-
-#### [MODIFY] [analyze_emotion.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/analyze_emotion.py)
-- Add `argparse` for `--faces-root`, `--output-root`
-- Already has good skip logic (lines 476-486)
-
-#### [MODIFY] [emotion_summary_report.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/emotion_summary_report.py)
-- Add `argparse` for `--input-dir`, `--output-dir`
-- Keep auto-detection logic (lines 465-496)
-
----
-
-### Phase 3: Configuration & Dependencies
-
-#### [NEW] [requirements.txt](file:///c:/Users/ruben/Desktop/VideoEmotion/requirements.txt)
-Generate with all dependencies:
-```txt
-opencv-python
-mediapipe
-numpy
-torch
-hsemotion
-deepface
-tensorflow
-```
-
-#### [NEW] [config.yaml](file:///c:/Users/ruben/Desktop/VideoEmotion/config.yaml)
-Centralize settings:
-- Frame extraction FPS
-- Face detection thresholds
-- Emotion analysis confidence levels
-- Smoothing windows
-
----
-
-### Phase 4: Visualization (Optional Enhancement)
-
-#### [NEW] [visualize_results.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/visualize_results.py)
-
-**Purpose:** Create annotated video with emotion overlays
-
-**Features:**
-- Read emotion analysis results
-- Overlay bounding boxes + emotion labels
-- Color-coded by emotion type
-- Export as new video with annotations
-
----
-
-### Phase 5: Documentation
-
-#### [NEW] [README.md](file:///c:/Users/ruben/Desktop/VideoEmotion/README.md)
-
-**Sections:**
-- Project overview
-- Installation instructions
-- Quick start guide
-- Detailed usage examples
-- Output structure explanation
-- Configuration options
-
----
-
-## New Features to Consider
-
-### Phase 6: Real-Time Video Analysis
-
-#### [NEW] [realtime_analysis.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/realtime_analysis.py)
-
-**Purpose:** Analyze emotions from webcam/live video feed in real-time
-
-**Features:**
-- Live webcam emotion detection
-- Real-time face tracking with emotion overlays
-- Export recorded sessions with metadata
-- Configurable FPS and display options
-
-**Use Cases:**
-- Interview analysis
-- User testing sessions
-- Live presentations
-- Virtual meetings
-
----
-
-### Phase 7: Cross-Video Person Re-identification
-
-#### [NEW] [person_reid.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/person_reid.py)
-
-**Purpose:** Track the same person across multiple videos
-
-**Features:**
-- Face embedding extraction (FaceNet/ArcFace)
-- Cross-video matching with similarity scores
-- Merge emotion profiles for the same person
-- Generate unified reports per individual
-
-**Enhanced Workflow:**
-```mermaid
-graph LR
-    A[Video 1] --> B[Person A: person_0000]
-    C[Video 2] --> D[Person A: person_0001]
-    B --> E[Re-ID System]
-    D --> E
-    E --> F[Global ID: person_A_unified]
-    F --> G[Combined Emotion Profile]
-```
-
----
-
-### Phase 8: Advanced Analytics Dashboard
-
-#### [NEW] [dashboard.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/dashboard.py)
-
-**Purpose:** Interactive web dashboard for exploring results
-
-**Technology:** Streamlit or Flask + Plotly
-
-**Features:**
-- **Timeline View:** Emotion progression over video duration
-- **Person Comparison:** Side-by-side emotion profiles
-- **Heatmaps:** Emotional intensity across video segments
-- **Export:** PDF reports with charts and insights
-- **Video Player:** Synchronized playback with emotion annotations
-
-**Visualizations:**
-```python
-# Examples:
-- Emotion pie chart per person
-- Line graph: confidence scores over time
-- Bar chart: dominant emotions comparison
-- Scatter plot: smoothing score vs confidence
-```
-
----
-
-### Phase 9: Emotion Triggers & Events
-
-#### [NEW] [event_detection.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/event_detection.py)
-
-**Purpose:** Automatically detect significant emotional moments
-
-**Features:**
-- **Emotion Spikes:** Detect sudden changes (e.g., neutral → surprise)
-- **Sustained Emotions:** Flag prolonged states (e.g., 30s of sadness)
-- **Multi-person Sync:** Identify when multiple people share emotions
-- **Timestamp Export:** Create highlight reel metadata
-
-**Output Example:**
-```json
-{
-  "events": [
-    {
-      "time_ms": 12340,
-      "type": "spike",
-      "person_id": "person_0000",
-      "from": "neutral",
-      "to": "surprise",
-      "confidence": 0.87
-    },
-    {
-      "time_ms": 45600,
-      "type": "sustained",
-      "person_id": "person_0001",
-      "emotion": "happy",
-      "duration_ms": 8200
-    }
-  ]
-}
-```
-
----
-
-### Phase 10: Batch Processing & API
-
-#### [NEW] [api_server.py](file:///c:/Users/ruben/Desktop/VideoEmotion/app/api_server.py)
-
-**Purpose:** RESTful API for programmatic access
-
-**Framework:** FastAPI
-
-**Endpoints:**
-```python
-POST   /api/analyze       # Upload video, get job ID
-GET    /api/jobs/{id}     # Check processing status
-GET    /api/results/{id}  # Retrieve analysis results
-GET    /api/visualize/{id} # Get annotated video
-DELETE /api/jobs/{id}     # Cleanup resources
-```
-
-**Use Cases:**
-- Integrate with other applications
-- Batch process multiple videos
-- Cloud deployment (Docker ready)
-
----
-
-### Phase 11: Enhanced Reporting
-
-#### [NEW] [advanced_reports.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/advanced_reports.py)
-
-**Purpose:** Generate comprehensive, shareable reports
-
-**Formats:**
-- **PDF:** Professional reports with charts
-- **HTML:** Interactive web reports
-- **Excel:** Tabular data with pivot tables
-- **Video:** Annotated output with emotion overlays
-
-**Additional Metrics:**
-- **Emotional Diversity Score:** How varied emotions are
-- **Engagement Index:** Based on attention/surprise
-- **Sentiment Trend:** Positive/negative trajectory
-- **Micro-expressions:** Very brief emotional flashes
-
----
-
-### Phase 12: Audio Analysis Integration
-
-#### [NEW] [audio_emotion.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/audio_emotion.py)
-
-**Purpose:** Multimodal emotion recognition (visual + audio)
-
-**Features:**
-- Speech emotion recognition (using librosa/speechbrain)
-- Voice tone analysis (pitch, energy, speaking rate)
-- Merge audio + visual predictions for higher accuracy
-- Detect emotion mismatches (face vs voice)
-
-**Enhanced Decision:**
-```python
-# Weighted fusion
-final_emotion = (
-    0.6 * visual_emotion +
-    0.4 * audio_emotion
-)
-```
-
----
-
-### Phase 13: Privacy & Anonymization
-
-#### [NEW] [anonymize.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/anonymize.py)
-
-**Purpose:** Protect privacy in sensitive videos
-
-**Features:**
-- Face blurring in output videos
-- Pseudonymized person IDs
-- Remove/redact background objects
-- GDPR-compliant data handling
-
----
-
-### Phase 14: Model Fine-tuning
-
-#### [NEW] [train_custom_model.py](file:///c:/Users/ruben/Desktop/VideoEmotion/src/train_custom_model.py)
-
-**Purpose:** Fine-tune emotion models on custom datasets
-
-**Features:**
-- Data annotation interface
-- Transfer learning from HSEmotion/DeepFace
-- Custom emotion labels (beyond 7 basic emotions)
-- Model evaluation and comparison
-
-**Use Case:** Domain-specific emotions (e.g., medical, customer service)
-
----
-
-## Verification Plan
-
-### Automated Tests
+### Realtime Analysis (Standalone)
+You can run realtime analysis without the API for testing:
 ```bash
-# Test complete pipeline
-python src/pipeline.py --video data/videos/sample.mp4 --fps 5
-
-# Expected outputs:
-# ├── data/extracted_frames/sample/frames_fps5/*.jpg
-# ├── data/detected_faces/sample/frames_fps5/person_0000/*.jpg
-# ├── output/emotion_results/sample/frames_fps5/latest/*.json
-# └── output/reports/sample/frames_fps5/YYYY-MM-DD_HH-MM-SS/summary.json
+venv\Scripts\python src/realtime/realtime_analysis.py --camera-id 0
 ```
 
-### Manual Verification
-- Inspect `summary.json` for correct person tracking
-- Verify emotion distributions are reasonable
-- Check that smoothing improved stability scores
+## 9. Configuration
+
+*   **`.env`**: Server-specific settings (Network, Security).
+    *   `HOST`: Service binding IP.
+    *   `ALLOWED_ORIGINS`: CORS settings.
+*   **`config.yaml`**: Project logic settings.
+    *   `paths`: Directory locations (data/videos, output/reports).
+    *   `emotion_analysis`: Model thresholds and parameters.
+
+## 10. Testing
+
+Run the full test suite using `pytest`.
+```bash
+# Run all tests
+venv\Scripts\pytest -v
+
+# Run specific file
+venv\Scripts\pytest tests/test_video_manager.py
+```
+Coverage includes unit tests for the Logic Layer and integration tests for the API Layer.
+
+## 11. Limitations & Known Issues
+*   **Platform**: Primarily tested on Windows (path handling).
+*   **Dependencies**: MediaPipe dependency management can be tricky on some Linux distros.
+*   **Performance**: Realtime FPS depends heavily on CPU/GPU capabilities.
+
+## 12. Future Improvements
+*   **Dockerization**: Full `docker-compose` setup.
+*   **GPU Acceleration**: Explicit CUDA support for HSEmotion.
+*   **Auth**: Add JWT authentication for API endpoints.
+
+## 13. License & Credits
+
+*   **HSEmotion**: High-performance emotion recognition library.
+*   **MediaPipe**: Google's framework for face detection.
+*   **FastAPI**: Modern, fast web framework for Python.
+
+(c) 2026 VideoEmotion Team. Private/Internal License.
