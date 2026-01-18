@@ -12,7 +12,7 @@ except ImportError:
 
 class ProjectConfig(BaseModel):
     name: str
-    version: str or float
+    version: str | float
     description: str
 
 class PathsConfig(BaseModel):

@@ -19,24 +19,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Add src to path
+# Add src to path - Not needed if running as module from root, but kept for safety if needed, 
+# but we will use fully qualified imports to avoid conflicts.
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "src"))
+# sys.path.insert(0, str(project_root / "src"))
 
-from core import (
+from src.core import (
     VideoManager,
     TrashManager,
     StatsUpdater,
     PipelineExecutor,
+    RealtimeManager,
     VideoMode,
     VideoStatus,
     PipelineConfig,
+    RealtimeConfig,
+    RealtimeSession,
 )
 from app.dependencies import (
     get_video_manager,
     get_trash_manager,
     get_stats_updater,
     get_pipeline_executor,
+    get_realtime_manager,
 )
 from app.config import settings
 
@@ -606,6 +611,104 @@ async def refresh_stats(
         return {"message": "Statistics refresh started", "status": "pending"}
     except Exception as e:
         logger.error(f"Failed to refresh stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Realtime Analysis Endpoints
+# ============================================================================
+
+class RealtimeConfigRequest(BaseModel):
+    camera_id: int = 0
+    display_width: int = 800
+    min_det_score: float = 0.65
+    save_json: bool = True
+    save_video: bool = True
+    visualize: bool = True
+
+class RealtimeStatusResponse(BaseModel):
+    session_id: str
+    status: str
+    start_time: str
+    config: dict
+    output_dir: Optional[str] = None
+    error: Optional[str] = None
+
+@app.post("/api/realtime/start", response_model=RealtimeStatusResponse)
+async def start_realtime_session(
+    config_req: RealtimeConfigRequest,
+    realtime_manager: RealtimeManager = Depends(get_realtime_manager)
+):
+    """Start a new realtime analysis session"""
+    try:
+        config = RealtimeConfig(
+            camera_id=config_req.camera_id,
+            display_width=config_req.display_width,
+            min_det_score=config_req.min_det_score,
+            save_json=config_req.save_json,
+            save_video=config_req.save_video,
+            visualize=config_req.visualize
+        )
+        
+        session = realtime_manager.start_session(config)
+        
+        return RealtimeStatusResponse(
+            session_id=session.session_id,
+            status=session.status.value,
+            start_time=session.start_time.isoformat(),
+            config=session.config.dict(),
+            output_dir=session.output_dir,
+            error=session.error
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to start realtime session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/realtime/stop")
+async def stop_realtime_session(
+    realtime_manager: RealtimeManager = Depends(get_realtime_manager)
+):
+    """Stop the current realtime analysis session"""
+    try:
+        realtime_manager.stop_session()
+        return {"success": True, "message": "Realtime session stopped"}
+    except Exception as e:
+        logger.error(f"Failed to stop realtime session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/realtime/status", response_model=RealtimeStatusResponse)
+async def get_realtime_status(
+    realtime_manager: RealtimeManager = Depends(get_realtime_manager)
+):
+    """Get current realtime session status"""
+    try:
+        session = realtime_manager.get_status()
+        
+        return RealtimeStatusResponse(
+            session_id=session.session_id,
+            status=session.status.value,
+            start_time=session.start_time.isoformat(),
+            config=session.config.dict(),
+            output_dir=session.output_dir,
+            error=session.error
+        )
+    except Exception as e:
+        logger.error(f"Failed to get realtime status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/realtime/logs")
+async def get_realtime_logs(
+    limit: int = Query(100, ge=1, le=500),
+    realtime_manager: RealtimeManager = Depends(get_realtime_manager)
+):
+    """Get realtime session logs"""
+    try:
+        logs = realtime_manager.get_logs(limit=limit)
+        return {"logs": logs, "total": len(logs)}
+    except Exception as e:
+        logger.error(f"Failed to get realtime logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

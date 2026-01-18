@@ -24,7 +24,7 @@ class HSEmotionDetector:
         print("[HSEmotionDetector] Chargement du modèle HSEmotion...")
         from hsemotion.facial_emotions import HSEmotionRecognizer
         self.model = HSEmotionRecognizer(model_name="enet_b0_8_best_vgaf", device=device)
-        print("[HSEmotionDetector] Modèle chargé ✅")
+        print("[HSEmotionDetector] Modèle chargé")
 
     def analyze(self, img_bgr: np.ndarray) -> Tuple[Optional[str], float]:
         if img_bgr is None or img_bgr.size == 0:
