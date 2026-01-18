@@ -68,7 +68,14 @@ class VideoManager:
             except Exception as e:
                 logger.error(f"Error processing realtime session {p}: {e}")
 
-        # Update Store
+        # Update Store & Prune Missing
+        found_ids = {v.id for v in all_videos}
+        existing_ids = list(self.store.list_videos().keys())
+
+        for vid_id in existing_ids:
+            if vid_id not in found_ids:
+                self.store.delete_video(vid_id)
+
         for video in all_videos:
             self.store.set_video(video.id, video.to_dict())
         self.store.save()

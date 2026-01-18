@@ -408,15 +408,16 @@ class PipelineExecutor:
     def __del__(self):
         """Cleanup on deletion"""
         # Terminate any running processes
-        for job_id, process in list(self._running_processes.items()):
-            try:
-                process.terminate()
-                process.wait(timeout=2)
-            except:
+        if hasattr(self, "_running_processes"):
+            for job_id, process in list(self._running_processes.items()):
                 try:
-                    process.kill()
+                    process.terminate()
+                    process.wait(timeout=2)
                 except:
-                    pass
+                    try:
+                        process.kill()
+                    except:
+                        pass
 
         if hasattr(self, "_executor"):
             self._executor.shutdown(wait=False)

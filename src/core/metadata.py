@@ -51,3 +51,10 @@ class MetadataStore:
 
     def list_videos(self) -> Dict[str, Dict]:
         return self.data.get("videos", {})
+
+    def delete_video(self, video_id: str) -> bool:
+        if video_id in self.data["videos"]:
+            del self.data["videos"][video_id]
+            self.save()
+            return True
+        return False

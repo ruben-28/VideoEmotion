@@ -74,10 +74,21 @@ export default function Home() {
 
   // --- Fetching ---
 
-  const loadData = async () => {
+  const loadData = async (withScan = false) => {
     try {
       setLoading(true);
       setError(null);
+
+      if (withScan) {
+        // Trigger a filesystem scan first
+        try {
+          await fetch(`${API_BASE}/api/videos/scan`, { method: "POST" });
+          // Small delay to allow scan to process
+          await new Promise(r => setTimeout(r, 500));
+        } catch (e) {
+          console.error("Scan failed", e);
+        }
+      }
 
       // 1. Fetch Videos
       const vidRes = await fetch(`${API_BASE}/api/videos?per_page=100&sort_by=created_at&sort_order=desc`);
@@ -280,9 +291,9 @@ export default function Home() {
               Analytics
             </Link>
             <button
-              onClick={loadData}
+              onClick={() => loadData(true)}
               className="rounded-full bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
-              title="Refresh Data"
+              title="Sync & Refresh Data"
             >
               <Icons.Refresh />
             </button>

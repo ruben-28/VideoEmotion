@@ -33,24 +33,18 @@ def get_video_manager() -> VideoManager:
 def get_trash_manager() -> TrashManager:
     return TrashManager(
         project_root=settings.server.PROJECT_ROOT,
-        trash_dir=settings.server.PROJECT_ROOT
-        / "trash",  # Assuming trash dir is fixed or needs config
-        metadata_store=MetadataStore(
-            settings.server.PROJECT_ROOT / settings.project.paths.metadata
-        ),
+        trash_root=settings.server.PROJECT_ROOT / "trash",
     )
 
 
 @lru_cache()
 def get_stats_updater() -> StatsUpdater:
-    return StatsUpdater(get_video_manager())
+    return StatsUpdater(project_root=settings.server.PROJECT_ROOT)
 
 
 @lru_cache()
 def get_pipeline_executor() -> PipelineExecutor:
-    return PipelineExecutor(
-        project_root=settings.server.PROJECT_ROOT, python_executable=sys.executable
-    )
+    return PipelineExecutor(project_root=settings.server.PROJECT_ROOT)
 
 
 @lru_cache()

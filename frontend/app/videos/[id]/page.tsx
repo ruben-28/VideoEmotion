@@ -239,10 +239,19 @@ export default function VideoDetailPage() {
 
                         <div className="flex flex-col gap-2">
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     if (confirm("Delete this video?")) {
-                                        fetch(`${API_BASE}/api/videos/${id}`, { method: "DELETE" })
-                                            .then(() => router.push("/"));
+                                        try {
+                                            const res = await fetch(`${API_BASE}/api/videos/${id}`, { method: "DELETE" });
+                                            if (!res.ok) {
+                                                const error = await res.json().catch(() => ({ message: "Unknown error" }));
+                                                alert(`Failed to delete video: ${error.message || res.statusText}`);
+                                                return;
+                                            }
+                                            router.push("/");
+                                        } catch (err) {
+                                            alert(`Failed to delete video: ${err instanceof Error ? err.message : "Network error"}`);
+                                        }
                                     }
                                 }}
                                 className="w-full rounded-lg border border-red-200 bg-red-50 py-2.5 text-sm font-medium text-red-600 hover:bg-red-100 dark:border-red-900/30 dark:bg-red-950/10 dark:text-red-400 dark:hover:bg-red-950/20 transition-colors"
