@@ -12,7 +12,9 @@
 **VideoEmotion**
 
 ### Team Members
-[Student Name]
+* BENSIMON RUBEN 
+* SARFATI ETHAN 
+* ANTIGRAVITY 
 
 ### Context and Motivation
 Understanding human emotional responses is critical across various fields, from market research (ad testing) to psychological studies and user experience (UX) evaluation. Traditional methods often rely on subjective self-reporting or manual annotation, which are time-consuming and prone to bias. **VideoEmotion** was developed to bridge this gap by providing an automated, scalable solution for detecting and classifying human emotions in video content using state-of-the-art Computer Vision (CV) and Machine Learning (ML) techniques.
@@ -76,6 +78,17 @@ VideoEmotion is a client-server application comprising a high-performance **Fast
 
 ### Expected Value
 The system democratizes access to advanced emotion AI, allowing users to obtain granular emotional data without needing deep expertise in computer vision pipelines.
+
+### User Interface
+The application features a modern, responsive dashboard designed for ease of use.
+
+**Dashboard - Video Inventory**
+The main view provides a quick overview of all processed videos, their status, and storage usage.
+![Dashboard Interface](docs/images/dashboard_interface.png)
+
+**Video Analysis Details**
+Detailed insights including per-frame emotion detection, timeline graphs, and confidence scores.
+![Video Details Interface](docs/images/video_details_interface.png)
 
 ---
 
@@ -408,3 +421,9 @@ VideoEmotion successfully delivers a modular, verifiable, and user-friendly syst
 3.  **HSEmotion Library**: https://github.com/HSE-asavchenko/HSEmotion
 4.  **Next.js Documentation**: https://nextjs.org/docs
 5.  **Clean Architecture Principles (Robert C. Martin)**
+
+
+---  
+
+
+© 2026 VideoEmotion — Tous droits réservés
