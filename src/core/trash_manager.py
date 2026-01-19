@@ -6,6 +6,7 @@ Supports batch operations and rollback on errors.
 import shutil
 import json
 import asyncio
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -273,6 +274,9 @@ class TrashManager:
 
         # Delete
         try:
+            # Clean up master entries before deleting files
+            self._clean_master_entries(trash_dir)
+            
             self._safe_rmtree(trash_dir)
             logger.info(
                 f"Permanently deleted: {trash_id} ({size_bytes / (1024 * 1024):.2f} MB)"
@@ -298,8 +302,146 @@ class TrashManager:
                 logger.error(f"Failed to delete {trash_ids[i]}: {result}")
             else:
                 total_freed += result
-
+        
         return total_freed
+
+    def _clean_master_entries(self, trash_dir: Path) -> None:
+        """
+        Clean up entries from emotion_results_master.json derived from detected faces in this trash.
+        This attempts to replicate the key generation logic from analyze_emotion.py.
+        """
+        # We need to find the deleted 'detected_faces' folder inside trash
+        # Structure in trash: <trash_id>/detected_faces/...
+        detected_faces_trash = trash_dir / "detected_faces"
+        if not detected_faces_trash.exists():
+            return
+
+        master_json_path = self.project_root / "output" / "emotion_results" / "emotion_results_master.json"
+        if not master_json_path.exists():
+            return
+
+        # Prepare list of keys to remove
+        keys_to_remove = set()
+
+        # Traverse the detected_faces in trash to reconstruct keys
+        # Key format: relative path from faces_root
+        # In trash, we have the content of the video folder.
+        # But master keys are like "frames_fps5/person_0000/..."
+        # We need to know what the relative path WAS.
+        # However, Trash stores the COPY of the folder.
+        # If we had: data/detected_faces/MyVideo/frames_fps5/...
+        # In trash: trash_root/offline/<trash_id>/detected_faces/frames_fps5/...
+        
+        # So we can walk the trash detected_faces directory
+        for root, _, files in os.walk(detected_faces_trash):
+            for file in files:
+                if not file.lower().endswith((".jpg", ".png", ".jpeg")):
+                    continue
+                
+                # Full path in trash
+                trash_file_path = Path(root) / file
+                
+                # Relative path from detected_faces folder in trash
+                rel_path = trash_file_path.relative_to(detected_faces_trash)
+                
+                # The master json key is exactly this relative path? 
+                # Wait. In analyze_emotion.py: 
+                # rel_dir = os.path.relpath(dirpath, faces_root)
+                # rel_path = filename if rel_dir == "." else os.path.join(rel_dir, filename)
+                #
+                # faces_root usually points to data/detected_faces/<video>/frames_fpsX
+                # OR data/detected_faces
+                #
+                # If pipeline calls analyze with faces_root = data/detected_faces/<video>/frames_fpsX
+                # Then rel_dir starts from there.
+                # BUT master keys usually look like: "frames_fps5\person_0000\frame_..."
+                # Let's check the master json content again.
+                # "frames_fps5\\person_0000\\frame_00000_t00000000track000.jpg"
+                # This suggests faces_root was the VIDEO folder, not frames_fpsX?
+                #
+                # In pipeline.py:
+                # detected_video_root = detected_root / video_name / frames_dir
+                # analyze_emotions_incremental(faces_root=str(detected_video_root), ...)
+                #
+                # If faces_root passed to analyze is .../frames_fps5
+                # Then os.walk(faces_root) -> rel_dir is relative to frames_fps5.
+                # So if folder is person_0000 inside frames_fps5
+                # rel_dir = person_0000
+                # rel_path = person_0000/image.jpg.
+                #
+                # BUT the keys in the provided JSON show "frames_fps5\\person_0000\\..."
+                # This contradicts pipeline.py call unless pipeline argument changed or I misread.
+                #
+                # Let's re-read pipeline.py call:
+                # detected_video_root = detected_root / video_name / frames_dir
+                # analyze_emotions_incremental(faces_root=str(detected_video_root), ...)
+                #
+                # If the key in JSON is "frames_fps5\person_0000\..." then either:
+                # 1. faces_root was actually data/detected_faces/<video> (parent of frames_fps5)
+                # 2. OR the key is constructed differently.
+                
+                # Looking at analyze_emotion.py again:
+                # rel_dir = os.path.relpath(dirpath, faces_root)
+                # rel_path = ... os.path.join(rel_dir, filename)
+                
+                # If the JSON has "frames_fps5...", then rel_dir MUST start with frames_fps5.
+                # This implies faces_root must be the PARENT of frames_fps5.
+                # 
+                # In pipeline.py:
+                # detected_video_root = detected_root / video_name / frames_dir 
+                # This looks like it points DIRECTLY to frames_fps5.
+                # 
+                # Checking master json again...
+                # "frames_fps5\\person_0000\\frame_..."
+                #
+                # Wait, if I am deleting the video, I want to remove ALL entries for that video.
+                # If I walk the trash detected_faces, I see:
+                # extracted means: data/detected_faces/<video_name> (from VideoManager update)
+                # So detected_faces_trash contains the content of <video_name>.
+                # So it has frames_fps5/person_0000/...
+                #
+                # So relative path from detected_faces_trash IS "frames_fps5/person_0000/..."
+                # This matches the JSON keys!
+                # 
+                # So the logic is:
+                key = str(rel_path).replace("\\", "/") # Normalize to forward slash just in case? 
+                # The JSON has backslashes on Windows probably?
+                # "frames_fps5\\person_0000\\..."
+                # Let's try to match both separators or rely on what's in JSON. 
+                # The safest is to try to match exact string or normalized.
+                # Actually, JSON keys are strings. 
+                # Let's rely on standard path str conversion but mindful of separators.
+                
+                keys_to_remove.add(str(rel_path))
+                # Also add the one with backslashes if current os is not windows (unlikely here)
+                # Or with forward slashes
+                keys_to_remove.add(str(rel_path).replace("/", "\\"))
+                keys_to_remove.add(str(rel_path).replace("\\", "/"))
+
+        if not keys_to_remove:
+            return
+
+        # Load Lock Save 
+        # (Naive implementation, race conditions possible but unlikely in single user desktop app)
+        try:
+            with open(master_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            original_len = len(data)
+            for k in list(data.keys()):
+                # We normalize key from json to check against our set
+                # But our set has multiple variants.
+                # Let's just check direct presence
+                if k in keys_to_remove:
+                    del data[k]
+            
+            if len(data) < original_len:
+                with open(master_json_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+                logger.info(f"Removed {original_len - len(data)} entries from master JSON for trash {trash_dir.name}")
+        
+        except Exception as e:
+            logger.error(f"Failed to clean up master JSON: {e}")
 
     def list_trash(self) -> List[TrashMetadata]:
         """List all items in trash"""

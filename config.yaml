@@ -124,6 +124,7 @@ paths:
   reports: output/reports/offline
   realtime_output: output/realtime
   visualizations: output/visualizations
+  trash: trash
 
 # =========================================================
 # Logging & Debug

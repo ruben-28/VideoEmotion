@@ -121,7 +121,13 @@ class VideoManager:
         # Load Stats
         stats = self.stats_calculator.load_offline_stats(reports_dir)
 
-        file_paths = {"video": str(video_path), "reports": str(reports_dir)}
+        file_paths = {
+            "video": str(video_path),
+            "reports": str(reports_dir),
+            "extracted_frames": str(frames_dir),
+            "detected_faces": str(self.project_root / "data" / "detected_faces" / video_name),
+            "emotion_results": str(results_dir),
+        }
 
         return VideoMetadata(
             id=video_id,

@@ -332,12 +332,20 @@ export default function Home() {
               <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-700 mx-2" />
 
               {activeTab === "trash" ? (
-                <button
-                  onClick={handleBatchRestore}
-                  className="text-sm text-neutral-600 hover:text-black dark:text-neutral-400 dark:hover:text-white"
-                >
-                  Restore
-                </button>
+                <>
+                  <button
+                    onClick={handleBatchRestore}
+                    className="text-sm text-neutral-600 hover:text-black dark:text-neutral-400 dark:hover:text-white"
+                  >
+                    Restore
+                  </button>
+                  <button
+                    onClick={handleBatchDelete}
+                    className="text-sm text-red-600 hover:text-red-700"
+                  >
+                    Delete Forever
+                  </button>
+                </>
               ) : (
                 <>
                   <button

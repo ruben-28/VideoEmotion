@@ -33,7 +33,7 @@ def get_video_manager() -> VideoManager:
 def get_trash_manager() -> TrashManager:
     return TrashManager(
         project_root=settings.server.PROJECT_ROOT,
-        trash_root=settings.server.PROJECT_ROOT / "trash",
+        trash_root=settings.server.PROJECT_ROOT / settings.project.paths.trash,
     )
 
 

@@ -49,6 +49,7 @@ class PathConfig(BaseModel):
     reports: Path = Path("output/reports")
     realtime_output: Path = Path("output/realtime")
     emotion_results: Path = Path("output/emotion_results")
+    trash: Path = Path("trash")
 
 
 class ProjectConfig(BaseModel):
