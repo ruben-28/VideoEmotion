@@ -114,6 +114,20 @@ end;
 
 ```
 
+### Realtime System Diagram
+The realtime loop operates on a frame-by-frame basis with low latency requirements.
+
+```mermaid
+graph TD;
+    Cam["Webcam Input"] -->|cv2.read| Frame["Raw Frame"];
+    Frame -->|MediaPipe| FaceDet["Face Detection"];
+    FaceDet -->|Crop| FaceImg["Face Image"];
+    FaceImg -->|HSEmotion| Emotion["Inference (7 classes)"];
+    Emotion -->|Overlay| Display["cv2.imshow"];
+    Emotion -->|Append| JSON["Session JSON"];
+    Display -->|Write| Video["Video File (mp4)"];
+```
+
 ### Layer Responsibilities
 *   **API Layer**: Utilizes **Pydantic** models to rigorously validate all incoming data. It defines the "contract" between the frontend and the backend. Routers are kept thin, delegating logic immediately to injected services.
 *   **Service Layer**: Represents the application's nervous system. It manages state (e.g., tracking video status), handles file system transactions (safe deletes), and orchestrates the execution of background jobs.
@@ -378,6 +392,9 @@ VideoEmotion successfully delivers a modular, verifiable, and user-friendly syst
     *   **Fallback Mechanism**: Port the HSEmotion/DeepFace fallback logic to the realtime loop.
     *   **Smoothing**: Implement temporal smoothing (e.g., exponential moving average) to stabilize live emotion predictions and reduce jitter.
     *   **Targeted Analysis**: Enable "Picture-in-Picture" or overlay analysis, allowing the system to run on a specific screen region while the user interacts with other content (e.g., product testing).
+    *   **Audio Analysis (Multimodal)**:
+        *   **Offline Integration**: Implement a parallel pipeline stage to extract audio tracks using FFmpeg. Use advanced speech emotion recognition (SER) models (e.g., Wav2Vec2 or Whisper-based sentiment analysis) to analyze tonal and textual cues. These audio insights will be "late-fused" with visual emotion data to resolve ambiguities (e.g., distinguishing "Happy" from "Nervous Laughter").
+        *   **Realtime Implementation**: Introduce a threaded audio capture module (using PyAudio) to run asynchronously alongside the video loop. Implementing a sliding window buffer will allow for continuous audio emotion classification, which can then be synchronized with the visual frame timestamp for a holistic live analysis.
 *   **Dockerization**: Encapsulate the environment for easier deployment.
 *   **Cloud Integration**: Allow storage of videos on S3/Azure Blob Storage.
 *   **User Authentication**: Secure the admin dashboard for multi-user environments.
