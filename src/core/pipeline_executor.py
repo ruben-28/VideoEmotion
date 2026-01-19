@@ -183,6 +183,8 @@ class PipelineExecutor:
                 str(self.project_root),
                 "--fps",
                 str(job.config.fps),
+                "--py-detect",
+                python_exe,
             ]
 
             # Add flags
@@ -235,48 +237,42 @@ class PipelineExecutor:
                     logger.debug(f"[{job_id}] {line}")
 
                     # Update progress based on output
-                    if "[1/5]" in line or "Extract" in line:
-                        current_step = 1
-                        job.progress = PipelineProgress(
-                            current_step="extract_frames",
-                            current_step_index=1,
-                            total_steps=total_steps,
-                            percent=20.0,
-                        )
-                    elif "[2/5]" in line or "Detect" in line:
-                        current_step = 2
-                        job.progress = PipelineProgress(
-                            current_step="detect_faces",
-                            current_step_index=2,
-                            total_steps=total_steps,
-                            percent=40.0,
-                        )
-                    elif "[3/5]" in line or "Analyze" in line:
-                        current_step = 3
-                        job.progress = PipelineProgress(
-                            current_step="analyze_emotion",
-                            current_step_index=3,
-                            total_steps=total_steps,
-                            percent=60.0,
-                        )
-                    elif "[4/5]" in line or "Summary" in line:
-                        current_step = 4
-                        job.progress = PipelineProgress(
-                            current_step="generate_summary",
-                            current_step_index=4,
-                            total_steps=total_steps,
-                            percent=80.0,
-                        )
-                    elif "[5/5]" in line or "Visualize" in line:
-                        current_step = 5
-                        job.progress = PipelineProgress(
-                            current_step="visualize_results",
-                            current_step_index=5,
-                            total_steps=total_steps,
-                            percent=90.0,
-                        )
-
-                    self._save_jobs()
+                    # prevent progress regression
+                    new_step = current_step
+                    
+                    if "[1/5]" in line:
+                         new_step = 1
+                    elif "[2/5]" in line:
+                         new_step = 2
+                    elif "[3/5]" in line:
+                         new_step = 3
+                    elif "[4/5]" in line:
+                         new_step = 4
+                    elif "[5/5]" in line:
+                         new_step = 5
+                    
+                    # Only update if we are advancing or staying same (though usually we just advance)
+                    # We strictly avoid going backwards unless it's a new job run, but here it is one run.
+                    if new_step > current_step:
+                        current_step = new_step
+                        
+                        step_info = {
+                            1: ("extract_frames", 20.0),
+                            2: ("detect_faces", 40.0),
+                            3: ("analyze_emotion", 60.0),
+                            4: ("generate_summary", 80.0),
+                            5: ("visualize_results", 90.0)
+                        }
+                        
+                        if current_step in step_info:
+                            name, percent = step_info[current_step]
+                            job.progress = PipelineProgress(
+                                current_step=name,
+                                current_step_index=current_step,
+                                total_steps=total_steps,
+                                percent=percent,
+                            )
+                            self._save_jobs()
 
             # Wait for completion
             return_code = process.wait()
