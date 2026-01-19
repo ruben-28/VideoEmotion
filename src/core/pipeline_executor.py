@@ -20,7 +20,7 @@ from .models import (
     JobStatus,
     VideoStatus,
 )
-
+from .pipeline_parser import PipelineLogParser
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ class PipelineExecutor:
         self._load_jobs()
         self._executor = ThreadPoolExecutor(max_workers=2)  # Limit concurrent pipelines
         self._running_processes: Dict[str, subprocess.Popen] = {}
+        self.parser = PipelineLogParser()
 
     def _load_jobs(self) -> None:
         """Load jobs from JSON file"""
@@ -238,34 +239,12 @@ class PipelineExecutor:
 
                     # Update progress based on output
                     # prevent progress regression
-                    new_step = current_step
+                    new_step_info = self.parser.parse_line(line)
                     
-                    if "[1/5]" in line:
-                         new_step = 1
-                    elif "[2/5]" in line:
-                         new_step = 2
-                    elif "[3/5]" in line:
-                         new_step = 3
-                    elif "[4/5]" in line:
-                         new_step = 4
-                    elif "[5/5]" in line:
-                         new_step = 5
-                    
-                    # Only update if we are advancing or staying same (though usually we just advance)
-                    # We strictly avoid going backwards unless it's a new job run, but here it is one run.
-                    if new_step > current_step:
-                        current_step = new_step
-                        
-                        step_info = {
-                            1: ("extract_frames", 20.0),
-                            2: ("detect_faces", 40.0),
-                            3: ("analyze_emotion", 60.0),
-                            4: ("generate_summary", 80.0),
-                            5: ("visualize_results", 90.0)
-                        }
-                        
-                        if current_step in step_info:
-                            name, percent = step_info[current_step]
+                    if new_step_info:
+                        idx, name, percent = new_step_info
+                        if idx > current_step:
+                            current_step = idx
                             job.progress = PipelineProgress(
                                 current_step=name,
                                 current_step_index=current_step,

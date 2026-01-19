@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 
 from .models import VideoMetadata, TrashMetadata, VideoMode
+from .emotion_cleaner import EmotionResultsCleaner
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class TrashManager:
         self.trash_root = Path(trash_root)
         self.trash_root.mkdir(parents=True, exist_ok=True)
         self._executor = ThreadPoolExecutor(max_workers=4)
+        self.cleaner = EmotionResultsCleaner(project_root)
 
     def _safe_rmtree(self, path: Path, retries: int = 5, delay: float = 0.5):
         """Robustly remove a directory tree with retries"""
@@ -275,7 +277,7 @@ class TrashManager:
         # Delete
         try:
             # Clean up master entries before deleting files
-            self._clean_master_entries(trash_dir)
+            self.cleaner.clean_master_entries(trash_dir)
             
             self._safe_rmtree(trash_dir)
             logger.info(

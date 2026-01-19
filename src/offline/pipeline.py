@@ -347,9 +347,9 @@ def run_pipeline_for_video(
 
     # 3) Analyze
     if args.no_analyze:
-        print("[SKIP] Step 3 (Analyze)")
+        logger.info("[SKIP] Step 3 (Analyze)")
     else:
-        print("[3/5] Analyze emotions")
+        logger.info("[3/5] Analyze emotions")
         from offline.analyze_emotion import analyze_emotions_incremental
 
         emotion_video_root.mkdir(parents=True, exist_ok=True)
@@ -361,9 +361,9 @@ def run_pipeline_for_video(
 
     # 4) Summary
     if args.no_summary:
-        print("[SKIP] Step 4 (Summary)")
+        logger.info("[SKIP] Step 4 (Summary)")
     else:
-        print("[4/5] Summary Report")
+        logger.info("[4/5] Summary Report")
         run_summary_for_video(
             project_root=project_root,
             config_path=config_path,
@@ -374,7 +374,7 @@ def run_pipeline_for_video(
 
     # 5) Visualize
     if args.no_visualize:
-        print("[SKIP] Step 5 (Visualize)")
+        logger.info("[SKIP] Step 5 (Visualize)")
     else:
         run_visualize_for_video(
             project_root=project_root,
