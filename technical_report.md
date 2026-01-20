@@ -14,7 +14,7 @@
 ### Team Members
 * BENSIMON RUBEN 
 * SARFATI ETHAN 
-* ANTIGRAVITY 
+
 
 ### Context and Motivation
 Understanding human emotional responses is critical across various fields, from market research (ad testing) to psychological studies and user experience (UX) evaluation. Traditional methods often rely on subjective self-reporting or manual annotation, which are time-consuming and prone to bias. **VideoEmotion** was developed to bridge this gap by providing an automated, scalable solution for detecting and classifying human emotions in video content using state-of-the-art Computer Vision (CV) and Machine Learning (ML) techniques.
@@ -83,12 +83,22 @@ The system democratizes access to advanced emotion AI, allowing users to obtain 
 The application features a modern, responsive dashboard designed for ease of use.
 
 **Dashboard - Video Inventory**
+
 The main view provides a quick overview of all processed videos, their status, and storage usage.
+
 ![Dashboard Interface](docs/images/dashboard_interface.png)
 
 **Video Analysis Details**
+
 Detailed insights including per-frame emotion detection, timeline graphs, and confidence scores.
+
 ![Video Details Interface](docs/images/video_details_interface.png)
+
+**General Analytics**
+
+This dashboard provides a **global overview of emotion analysis results across all processed videos**.  
+
+![General Analytics Dashboard](docs/images/analytics.png)
 
 ---
 
