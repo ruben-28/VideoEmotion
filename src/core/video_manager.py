@@ -18,7 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 class VideoManager:
-    """Orchestrator for video management"""
+    """
+    Orchestrator for video management.
+    
+    Responsibilities:
+    - Scans the filesystem for videos (via Scanner).
+    - Maintains the persistent metadata state (via MetadataStore).
+    - Calculates and aggregates statistics (via StatsCalculator).
+    - Provides a unified API for the backend to query video data.
+    """
 
     def __init__(
         self,
@@ -31,10 +39,10 @@ class VideoManager:
         Initialize VideoManager with injected dependencies.
 
         Args:
-            project_root: Root path of the project.
-            scanner: Service to scan filesystem for videos.
-            store: Service to persist metadata.
-            stats_calculator: Service to calculate video statistics.
+            project_root (Path): Root path of the project.
+            scanner (VideoScanner): Service to scan filesystem for videos.
+            store (MetadataStore): Service to persist metadata.
+            stats_calculator (StatsCalculator): Service to calculate video statistics.
         """
         self.project_root = Path(project_root)
         self.scanner = scanner
@@ -47,7 +55,23 @@ class VideoManager:
     def _scan_logic(self) -> List[VideoMetadata]:
         """
         Internal synchronous logic to scan both offline and realtime videos.
-        This serves as the single source of truth for scanning.
+        This serves as the single source of truth for the inventory.
+
+        Logic Flow:
+        1. Calls Scanner to get paths for Offline videos and Realtime sessions.
+        2. Iterates through paths and processes them into VideoMetadata objects.
+        3. Handles errors individually for each video to prevent full crash.
+        4. Synchronizes with the MetadataStore:
+           - Adds new videos.
+           - Removes videos that no longer exist on disk (Pruning).
+        5. Saves the updated state to the store.
+
+        Returns:
+            List[VideoMetadata]: A fresh list of all valid video metadata objects found.
+        
+        Side Effects:
+            - Modifies the persistent metadata store (JSON).
+            - Logs errors for unprocessable videos.
         """
         offline_paths = self.scanner.scan_offline()
         realtime_paths = self.scanner.scan_realtime()
@@ -84,19 +108,42 @@ class VideoManager:
         return all_videos
 
     def scan_videos(self) -> List[VideoMetadata]:
-        """Synchronous scan"""
+        """
+        Synchronous wrapper to trigger a full video scan.
+        Useful when running in a thread or script context.
+        """
         return self._scan_logic()
 
     async def scan_videos_async(self) -> List[VideoMetadata]:
         """
-        Asynchronous scan wrapper.
-        Runs the synchronous logic in a separate thread to avoid blocking the event loop.
+        Asynchronous wrapper for the scan logic.
+        
+        Logic Flow:
+        - Offloads the synchronous `_scan_logic` to a thread pool executor.
+        - Prevents blocking the main FastAPI event loop during heavy I/O operations.
+
+        Returns:
+            List[VideoMetadata]: The result of the scan operation.
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self._executor, self._scan_logic)
 
     def _process_offline_video(self, video_path: Path) -> VideoMetadata:
-        """Process offline video path into metadata"""
+        """
+        Converts a raw file path into a structured VideoMetadata object for offline videos.
+
+        Logic Flow:
+        1. Identifies existence of related artifacts (frames, results, reports).
+        2. Determines status (PROCESSED, PARTIAL, UNPROCESSED) based on artifacts.
+        3. Loads existing statistics if available.
+        4. Constructs the metadata object with absolute file paths.
+
+        Args:
+            video_path (Path): Path to the raw input video.
+
+        Returns:
+            VideoMetadata: The metadata representation of the video.
+        """
         video_name = video_path.stem
         video_id = f"{video_name}_offline"
 
@@ -142,6 +189,15 @@ class VideoManager:
         )
 
     def _process_realtime_session(self, session_dir: Path) -> VideoMetadata:
+        """
+        Converts a session directory into a structured VideoMetadata object for realtime sessions.
+
+        Args:
+            session_dir (Path): Path to the recorded session directory.
+
+        Returns:
+            VideoMetadata: The metadata representation of the session.
+        """
         session_name = session_dir.name
         video_id = f"{session_name}_realtime"
         emotions_json = session_dir / "realtime_emotions.json"
@@ -175,6 +231,16 @@ class VideoManager:
         )
 
     def get_video(self, video_id: str) -> Optional[VideoMetadata]:
+        """
+        Retrieve a single video's metadata by its unique ID.
+        Delegates to the underlying MetadataStore.
+
+        Args:
+            video_id (str): The unique identifier of the video.
+
+        Returns:
+            Optional[VideoMetadata]: The video object if found, else None.
+        """
         data = self.store.get_video(video_id)
         if data:
             return VideoMetadata.from_dict(data)
@@ -187,6 +253,24 @@ class VideoManager:
         sort_by="created_at",
         sort_order="desc",
     ) -> List[VideoMetadata]:
+        """
+        List videos with filtering and sorting capabilities.
+
+        Logic Flow:
+        1. Retrieves all raw video data from the store.
+        2. Converts dictionaries to VideoMetadata objects.
+        3. Applies filters (mode, status) if provided.
+        4. Applies sorting based on the requested key and order.
+
+        Args:
+            mode (Optional[VideoMode]): Filter by video mode (OFFLINE/REALTIME).
+            status (Optional[VideoStatus]): Filter by processing status.
+            sort_by (str): Field to sort by (created_at, name, status).
+            sort_order (str): 'asc' or 'desc'.
+
+        Returns:
+            List[VideoMetadata]: filtered and sorted list of videos.
+        """
         raw_videos = self.store.list_videos().values()
         videos = [VideoMetadata.from_dict(v) for v in raw_videos]
 
@@ -221,13 +305,25 @@ class VideoManager:
         return videos
 
     def batch_get_videos_async(self, video_ids: List[str]):
+        """
+        Retrieve multiple videos asynchronously (runs in executor).
+        """
         loop = asyncio.get_event_loop()
         return loop.run_in_executor(
             None, lambda: [self.get_video(v) for v in video_ids]
         )
 
     def update_video(self, video_id: str, updates: Dict) -> bool:
-        """Update video metadata"""
+        """
+        Update specific fields of a video's metadata.
+
+        Args:
+            video_id (str): ID of video to update.
+            updates (Dict): Dictionary of fields and new values.
+
+        Returns:
+            bool: True if update succeeded, False if video not found.
+        """
         # Note: Direct metadata manipulation might bypass store in current architecture
         # Ideally, this should go through store methods
         # For refactor compatibility we keep broadly same logic but relying on store if possible
@@ -240,17 +336,31 @@ class VideoManager:
         return True
 
     def delete_video_metadata(self, video_id: str) -> bool:
+        """Remove a video from the metadata store."""
         return self.store.delete_video(video_id)
 
     def add_video_metadata(self, video: VideoMetadata) -> None:
+        """Add or overwrite a video in the metadata store."""
         self.store.set_video(video.id, video.to_dict())
         self.store.save()
 
     def get_unprocessed_videos(self) -> List[VideoMetadata]:
+        """Convenience method to find all unprocessed offline videos."""
         return self.list_videos(mode=VideoMode.OFFLINE, status=VideoStatus.UNPROCESSED)
 
     def get_stats(self) -> Dict:
-        """Get global statistics"""
+        """
+        Calculate global system statistics.
+
+        Logic Flow:
+        1. Lists all videos without filtering.
+        2. Aggregates counts by Mode (Offline/Realtime) and Status.
+        3. Sums up total storage usage.
+        4. Calculates a weighted global emotion distribution across all videos.
+
+        Returns:
+            Dict: a comprehensive statistics dictionary.
+        """
         videos = self.list_videos()
 
         total = len(videos)
@@ -278,6 +388,9 @@ class VideoManager:
     def _calculate_global_emotions(
         self, videos: List[VideoMetadata]
     ) -> Dict[str, float]:
+        """
+        Helper to calculate weighted average emotion distribution.
+        """
         from collections import defaultdict
 
         weighted_sums = defaultdict(float)
@@ -303,5 +416,6 @@ class VideoManager:
         return {k: round(v / total_weight, 4) for k, v in weighted_sums.items()}
 
     def __del__(self):
+        """Cleanup resources on destruction."""
         if hasattr(self, "_executor"):
             self._executor.shutdown(wait=False)

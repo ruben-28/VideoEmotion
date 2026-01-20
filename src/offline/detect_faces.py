@@ -77,7 +77,8 @@ def resolve_from_project(project_root: Path, p: Optional[str]) -> Path:
 
 def apply_config_overrides(cfg: Dict[str, Any]) -> None:
     """
-    Override les constantes globales depuis config.yaml si présent.
+    Override global constants with values from config.yaml.
+    Sets parameters for tracking, filtering, bbox smoothing, and eye ratio.
     """
     global OVERLAP_THRESHOLD, TRACK_MAX_MISSING, CENTER_DIST_MAX
     global MIN_DET_SCORE, MIN_DET_SIZE, MAX_ASPECT_RATIO
@@ -174,9 +175,13 @@ _FRAME_RE = re.compile(r"frame_(\d+)")
 
 def parse_frame_index(filename: str) -> Optional[int]:
     """
-    Extrait frame_index depuis un filename comme:
-    frame_00001_t00000239.jpg
-    frame_00001_t00000239track000.jpg
+    Extract frame index from filename.
+    Matches patterns like:
+    - frame_00001_t00000239.jpg
+    - frame_00001_t00000239track000.jpg
+
+    Returns:
+        Optional[int]: The frame index (e.g. 1) or None.
     """
     m = _FRAME_RE.search(filename)
     if not m:
@@ -337,7 +342,8 @@ def write_bboxes_json(
     out_base: str, bbox_by_frame: Dict[int, List[Dict[str, Any]]], filename: str
 ) -> None:
     """
-    Ecrit un JSON du type:
+    Write bounding boxes to a JSON file.
+    Format:
     {
       "0": [{"track_id": 0, "bbox": [x,y,w,h]}],
       "1": [{"track_id": 0, "bbox": [x,y,w,h]}, {"track_id": 1, "bbox": [...] }]
@@ -364,6 +370,18 @@ def detect_faces_in_all_frames(
     export_bboxes: bool = False,
     bboxes_name: str = "bboxes.json",
 ) -> None:
+    """
+    Main detection loop.
+    Recursively scans extracted_frames_root for images.
+    Detects faces, applies tracking (SORT-like with histograms), aligns/crops faces, and saves them.
+    Optionally exports bounding box metadata.
+
+    Args:
+        extracted_frames_root (str): Input directory (frames).
+        detected_faces_root (str): Output directory (cropped faces).
+        export_bboxes (bool): Whether to save bboxes.json.
+        bboxes_name (str): Filename for bbox metadata.
+    """
     mp_face = mp.solutions.face_detection
 
     tracks: List[Track] = []

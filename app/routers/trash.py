@@ -12,7 +12,12 @@ router = APIRouter(prefix="/api/trash", tags=["Trash"])
 
 @router.get("", response_model=Dict[str, Any])
 async def list_trash(trash_manager: TrashManager = Depends(get_trash_manager)):
-    """List all items in trash"""
+    """
+    List all pending items in the trash.
+
+    Returns:
+        dict: containing 'trash_items' list and 'total' count.
+    """
     trash_items = trash_manager.list_trash()
 
     responses = []
@@ -41,7 +46,24 @@ async def restore_video(
     video_manager: VideoManager = Depends(get_video_manager),
     stats_updater: StatsUpdater = Depends(get_stats_updater),
 ):
-    """Restore video from trash"""
+    """
+    Restore a video from trash to its original location.
+
+    Logic:
+    1. Check availability of original path conflicts.
+    2. Move files back.
+    3. Trigger background re-scan and stats update.
+
+    Args:
+        trash_id (str): ID of the trash item.
+        background_tasks (BackgroundTasks): Task manager.
+
+    Returns:
+        dict: Success message and restored video ID.
+
+    Raises:
+        HTTPException: If restoration fails.
+    """
     success, original_video_id = trash_manager.restore_from_trash(trash_id)
 
     if success:
@@ -62,7 +84,16 @@ async def restore_video(
 async def delete_permanently(
     trash_id: str, trash_manager: TrashManager = Depends(get_trash_manager)
 ):
-    """Permanently delete from trash"""
+    """
+    Permanently delete a single item from the trash.
+    THIS ACTION IS IRREVERSIBLE.
+
+    Args:
+        trash_id (str): ID of the trash item.
+
+    Returns:
+        dict: Success message and amount of space freed.
+    """
     size_bytes = trash_manager.delete_permanently(trash_id)
 
     return {
@@ -74,7 +105,13 @@ async def delete_permanently(
 
 @router.post("/empty")
 async def empty_trash(trash_manager: TrashManager = Depends(get_trash_manager)):
-    """Empty entire trash"""
+    """
+    Empty the entire trash (delete all items permanently).
+    THIS ACTION IS IRREVERSIBLE.
+
+    Returns:
+        dict: Success message, count of deleted items, and total space freed.
+    """
     count, total_size = trash_manager.empty_trash()
 
     return {

@@ -1,6 +1,14 @@
 """
-Trash Manager - Handles video deletion, restoration, and permanent deletion.
-Supports batch operations and rollback on errors.
+Trash Manager Module.
+
+This module is responsible for safe deletion and restoration of video data.
+It implements a "soft delete" mechanism where files are moved to a trash directory
+instead of being immediately permanently deleted. It supports:
+- Moving video files and related artifacts (frames, results) to trash.
+- Restoring files from trash to their original locations.
+- Permanently deleting files from trash.
+- Batch operations with asynchronous support.
+- Rollback mechanisms to ensure atomicity of move/restore operations.
 """
 
 import shutil
@@ -20,9 +28,23 @@ logger = logging.getLogger(__name__)
 
 
 class TrashManager:
-    """Manages trash operations for videos"""
+    """
+    Manages trash operations for videos, ensuring safe deletion and restoration.
+
+    Attributes:
+        project_root (Path): Root directory of the project.
+        trash_root (Path): Directory where trashed items are stored.
+        cleaner (EmotionResultsCleaner): Utility to clean up partial analysis results.
+    """
 
     def __init__(self, project_root: Path, trash_root: Path):
+        """
+        Initialize the TrashManager.
+
+        Args:
+            project_root (Path): Root path of the project.
+            trash_root (Path): Path to the trash directory.
+        """
         self.project_root = Path(project_root)
         self.trash_root = Path(trash_root)
         self.trash_root.mkdir(parents=True, exist_ok=True)
@@ -30,7 +52,20 @@ class TrashManager:
         self.cleaner = EmotionResultsCleaner(project_root)
 
     def _safe_rmtree(self, path: Path, retries: int = 5, delay: float = 0.5):
-        """Robustly remove a directory tree with retries"""
+        """
+        Robustly remove a directory tree with retries and permission handling.
+        
+        Logic:
+        - Checks if path exists.
+        - Attempts removal in a loop.
+        - On failure, attempts to change file permissions (chmod +w).
+        - Waits between retries.
+
+        Args:
+            path (Path): Directory or file to remove.
+            retries (int): Number of retry attempts.
+            delay (float): Seconds to wait between retries.
+        """
         import time
         import os
         import stat
@@ -67,7 +102,26 @@ class TrashManager:
             shutil.rmtree(path, onerror=on_error)
 
     def move_to_trash(self, video_meta: VideoMetadata) -> TrashMetadata:
-        """Move video and all related files to trash"""
+        """
+        Move video and all related files to trash.
+
+        Logic:
+        1. Generates a unique trash ID based on video ID and timestamp.
+        2. Creates a destination directory in the trash.
+        3. Iterates through all file paths associated with the video.
+        4. Moves each file/directory to the trash directory.
+        5. Saves metadata about the operation to support restoration.
+        6. Implements rollback if any move operation fails.
+
+        Args:
+            video_meta (VideoMetadata): Metadata of the video to delete.
+
+        Returns:
+            TrashMetadata: Metadata describing the trashed item.
+            
+        Raises:
+            Exception: If moving files fails (after attempting rollback).
+        """
         timestamp = int(datetime.now().timestamp())
         trash_id = f"{video_meta.id}_{timestamp}"
 
@@ -151,7 +205,15 @@ class TrashManager:
     async def batch_move_to_trash_async(
         self, videos: List[VideoMetadata]
     ) -> List[TrashMetadata]:
-        """Move multiple videos to trash asynchronously"""
+        """
+        Move multiple videos to trash asynchronously.
+
+        Args:
+            videos (List[VideoMetadata]): List of videos to delete.
+
+        Returns:
+            List[TrashMetadata]: List of successfully trashed items.
+        """
         loop = asyncio.get_event_loop()
         tasks = [
             loop.run_in_executor(self._executor, self.move_to_trash, video)
@@ -170,7 +232,26 @@ class TrashManager:
         return trash_items
 
     def restore_from_trash(self, trash_id: str) -> Tuple[bool, str]:
-        """Restore video from trash to original location"""
+        """
+        Restore video from trash to original location.
+
+        Logic:
+        1. Finds the trash directory by ID.
+        2. Loads trash metadata to know original paths.
+        3. Checks for conflicts (if original files already exist).
+        4. Moves files back from trash to original locations.
+        5. Deletes the trash directory upon success.
+        6. Rolls back (deletes restored files) if restoration fails mid-way.
+
+        Args:
+            trash_id (str): ID of the trash item to restore.
+
+        Returns:
+            Tuple[bool, str]: Success status and original video ID.
+
+        Raises:
+            Exception: If trash not found, conflicts exist, or restoration fails.
+        """
         # Find trash directory
         trash_dir = self._find_trash_dir(trash_id)
         if not trash_dir:
@@ -261,7 +342,20 @@ class TrashManager:
     # ... (keeping async batch restore) ...
 
     def delete_permanently(self, trash_id: str) -> int:
-        """Permanently delete from trash"""
+        """
+        Permanently delete from trash.
+
+        Logic:
+        1. Finds the trash directory.
+        2. Cleans up associated master entries (e.g. from global analysis results).
+        3. Deletes the trash directory from disk.
+
+        Args:
+            trash_id (str): ID of the trash item.
+
+        Returns:
+            int: Number of bytes freed.
+        """
         trash_dir = self._find_trash_dir(trash_id)
         if not trash_dir:
             raise Exception(f"Trash entry not found: {trash_id}")
@@ -290,7 +384,15 @@ class TrashManager:
         return size_bytes
 
     async def batch_delete_permanently_async(self, trash_ids: List[str]) -> int:
-        """Permanently delete multiple items from trash asynchronously"""
+        """
+        Permanently delete multiple items from trash asynchronously.
+
+        Args:
+            trash_ids (List[str]): List of trash IDs.
+
+        Returns:
+            int: Total bytes freed.
+        """
         loop = asyncio.get_event_loop()
         tasks = [
             loop.run_in_executor(self._executor, self.delete_permanently, tid)
@@ -311,6 +413,9 @@ class TrashManager:
         """
         Clean up entries from emotion_results_master.json derived from detected faces in this trash.
         This attempts to replicate the key generation logic from analyze_emotion.py.
+        
+        Args:
+            trash_dir (Path): The directory of the trashed video.
         """
         # We need to find the deleted 'detected_faces' folder inside trash
         # Structure in trash: <trash_id>/detected_faces/...
@@ -446,7 +551,12 @@ class TrashManager:
             logger.error(f"Failed to clean up master JSON: {e}")
 
     def list_trash(self) -> List[TrashMetadata]:
-        """List all items in trash"""
+        """
+        List all items in trash.
+
+        Returns:
+            List[TrashMetadata]: List of trash items sorted by deletion date (newest first).
+        """
         trash_items = []
 
         if not self.trash_root.exists():
@@ -481,7 +591,15 @@ class TrashManager:
         return trash_items
 
     def get_trash_item(self, trash_id: str) -> Optional[TrashMetadata]:
-        """Get trash item by ID"""
+        """
+        Get specific trash item by ID.
+
+        Args:
+            trash_id (str): ID of the trash item.
+
+        Returns:
+            Optional[TrashMetadata]: The trash item or None if not found.
+        """
         trash_dir = self._find_trash_dir(trash_id)
         if not trash_dir:
             return None
@@ -499,7 +617,12 @@ class TrashManager:
             return None
 
     def empty_trash(self) -> Tuple[int, int]:
-        """Empty entire trash (delete all items permanently)"""
+        """
+        Empty entire trash (delete all items permanently).
+
+        Returns:
+            Tuple[int, int]: Count of items deleted and total size freed in bytes.
+        """
         trash_items = self.list_trash()
         count = len(trash_items)
         total_size = 0
@@ -517,7 +640,12 @@ class TrashManager:
         return count, total_size
 
     def get_trash_stats(self) -> Dict:
-        """Get trash statistics"""
+        """
+        Get statistics about the trash.
+
+        Returns:
+            Dict: Statistics including total items, count by mode, and total size.
+        """
         trash_items = self.list_trash()
 
         total_items = len(trash_items)
@@ -536,7 +664,19 @@ class TrashManager:
         }
 
     def _find_trash_dir(self, trash_id: str) -> Optional[Path]:
-        """Find trash directory by ID"""
+        """
+        Find trash directory by ID.
+
+        Algorithms:
+        1. Fast path: check direct path <mode>/<trash_id>
+        2. Fallback: search metadata in all folders if ID doesn't match folder name directly.
+
+        Args:
+            trash_id (str): ID to search for.
+
+        Returns:
+            Optional[Path]: Path to the trash directory or None.
+        """
         if not self.trash_root.exists():
             return None
 
@@ -578,7 +718,13 @@ class TrashManager:
     def _rollback_move(
         self, moved_paths: Dict[str, str], original_paths: Dict[str, str]
     ) -> None:
-        """Rollback partial move operation"""
+        """
+        Rollback partial move operation by moving files back to original locations.
+
+        Args:
+            moved_paths (Dict[str, str]): Map of key -> new path.
+            original_paths (Dict[str, str]): Map of key -> original path.
+        """
         logger.warning("Attempting rollback of partial move operation")
 
         for key, moved_path_str in moved_paths.items():

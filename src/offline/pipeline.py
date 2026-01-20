@@ -1,4 +1,16 @@
 # src/offline/pipeline.py
+"""
+Pipeline Orchestrator for Offline Video Analysis.
+
+This script manages the end-to-end execution of the emotion analysis pipeline:
+1. Frame Extraction (extract_frames.py)
+2. Face Detection (detect_faces.py via MediaPipe)
+3. Emotion Analysis (analyze_emotion.py via HSEmotion)
+4. Reporting (emotion_summary_report.py)
+5. Visualization (visualize_results.py)
+
+It supports both single video processing and batch mode.
+"""
 import argparse
 import sys
 import subprocess
@@ -18,10 +30,12 @@ logger = logging.getLogger("pipeline")
 
 
 def eprint(*args):
+    """Print to stderr."""
     logger.error(" ".join(map(str, args)))
 
 
 def add_src_to_syspath(project_root: Path) -> Path:
+    """Ensure src/ directory is in sys.path for imports."""
     src_dir = (project_root / "src").resolve()
     if str(src_dir) not in sys.path:
         sys.path.insert(0, str(src_dir))
@@ -29,6 +43,7 @@ def add_src_to_syspath(project_root: Path) -> Path:
 
 
 def load_config(config_path: Path) -> Dict[str, Any]:
+    """Load configuration from YAML file safely."""
     if not config_path.exists():
         return {}
     try:
@@ -43,6 +58,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
 
 
 def cfg_get(cfg: Dict[str, Any], *keys, default=None):
+    """Deep retrieval of config keys with default value."""
     cur: Any = cfg
     for k in keys:
         if not isinstance(cur, dict) or k not in cur:
@@ -52,6 +68,7 @@ def cfg_get(cfg: Dict[str, Any], *keys, default=None):
 
 
 def resolve_from_project(project_root: Path, p: Optional[str]) -> Path:
+    """Resolve a relative path against project root."""
     if p is None:
         return project_root
     pp = Path(p)
@@ -66,6 +83,20 @@ def run_detect_faces_cli_in_mp_env(
     output_faces_root: Path,
     export_bboxes: bool,
 ) -> int:
+    """
+    Execute detect_faces.py logic, potentially in a separate Python environment (if py_detect configured).
+
+    Args:
+        py_detect: Path to Python executable (optional separate venv).
+        project_root: Project root.
+        config_path: Config file path.
+        input_frames_root: Input directory (raw frames).
+        output_faces_root: Output directory (cropped faces).
+        export_bboxes: If True, saves bounding boxes to JSON.
+    
+    Returns:
+        int: Return code from subprocess.
+    """
     cmd = [
         py_detect,
         str((project_root / "src" / "offline" / "detect_faces.py").resolve()),
@@ -92,6 +123,16 @@ def run_summary_for_video(
     reports_out_root: Path,
     video_name: Optional[str],
 ) -> None:
+    """
+    Run the reporting module to generate JSON/CSV summaries.
+
+    Args:
+        project_root: Root path.
+        config_path: Config file.
+        emotion_out_root: Source directory for emotion results.
+        reports_out_root: Destination directory for reports.
+        video_name: Optional specific video to summarize (None = all).
+    """
     import offline.emotion_summary_report as report_mod
 
     saved_argv = sys.argv[:]
@@ -128,11 +169,22 @@ def run_visualize_for_video(
     force: bool,
 ) -> None:
     """
-    Step 5 (Visualize)
-    - Aggregate results into output/visualizations/<video>/<video>_<frames>_video_emotions.json
-    - Call offline/visualize_results.py
-    - Use bboxes.json if present
-    - Avoid duplicates at visualization root
+    Execute step 5: Visualization.
+    
+    Features:
+    - Aggregates frame-by-frame JSON results.
+    - Generates MP4 overlaying emotion data on original video.
+    
+    Args:
+        project_root: Project root.
+        video_path: Path to source video file.
+        videos_dir: Base videos directory.
+        detected_video_root: Path containing bboxes.json.
+        emotion_video_root: Path containing emotion JSONs per frame.
+        visualizations_root: Output directory.
+        video_name: Identifier of video.
+        fps: Frame extraction rate used.
+        force: If True, overwrite existing outputs.
     """
     from offline.utils import (
         aggregate_video_results,
@@ -225,6 +277,19 @@ def run_pipeline_for_video(
     args: argparse.Namespace,
     videos_dir: Path,
 ) -> None:
+    """
+    Main Logic Loop for a single video.
+
+    Executes steps sequentially:
+    1. Extract frames (FFmpeg via python).
+    2. Detect faces (MediaPipe).
+    3. Analyze emotions (HSEmotion).
+    4. Generate Summary.
+    5. Create Visualization.
+
+    Skips steps if instructed by command line args (e.g. --no-detect).
+    Handles directory creation and resolving paths for each step.
+    """
     extracted_root = resolve_from_project(
         project_root,
         str(cfg_get(cfg, "paths", "extracted_frames", default="data/extracted_frames")),
@@ -392,6 +457,10 @@ def run_pipeline_for_video(
 
 
 def main():
+    """
+    Command Line Interface Entry Point.
+    Parses arguments and configures the pipeline run.
+    """
     parser = argparse.ArgumentParser(
         description="VideoEmotion - Offline pipeline runner (extract -> detect -> analyze -> report -> visualize)"
     )

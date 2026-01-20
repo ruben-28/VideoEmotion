@@ -29,6 +29,12 @@ class PipelineExecutor:
     """Manages pipeline job execution"""
 
     def __init__(self, project_root: Path):
+        """
+        Initialize PipelineExecutor.
+
+        Args:
+            project_root (Path): Root directory of the project.
+        """
         self.project_root = Path(project_root)
         self.jobs_file = self.project_root / "pipeline_jobs.json"
         self.jobs: Dict[str, PipelineJob] = {}
@@ -38,7 +44,19 @@ class PipelineExecutor:
         self.parser = PipelineLogParser()
 
     def _load_jobs(self) -> None:
-        """Load jobs from JSON file"""
+        """
+        Load existing pipeline jobs from the persistent JSON file.
+
+        Logic:
+        1. Checks if the jobs file exists.
+        2. Reads JSON data.
+        3. Deserializes into PipelineJob objects.
+        4. Populates self.jobs dictionary.
+
+        Side Effects:
+            - Modifies self.jobs.
+            - Logs errors if loading fails.
+        """
         if not self.jobs_file.exists():
             return
 
@@ -54,7 +72,13 @@ class PipelineExecutor:
             logger.error(f"Failed to load jobs: {e}")
 
     def _save_jobs(self) -> None:
-        """Save jobs to JSON file"""
+        """
+        Save all current pipeline jobs to the persistent JSON file.
+
+        Logic:
+        1. Serializes all PipelineJob objects to dictionary format.
+        2. Writes to pipeline_jobs.json.
+        """
         try:
             jobs_data = {job_id: job.to_dict() for job_id, job in self.jobs.items()}
             with open(self.jobs_file, "w", encoding="utf-8") as f:
@@ -63,7 +87,16 @@ class PipelineExecutor:
             logger.error(f"Failed to save jobs: {e}")
 
     def create_job(self, video_name: str, config: PipelineConfig) -> str:
-        """Create a new pipeline job"""
+        """
+        Create and persist a new pipeline job.
+
+        Args:
+            video_name (str): Name of the video (including or excluding extension).
+            config (PipelineConfig): Configuration for the pipeline run (fps, flags, etc.).
+
+        Returns:
+            str: The unique ID of the created job.
+        """
         job_id = f"job_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:8]}"
 
         job = PipelineJob(
@@ -81,16 +114,46 @@ class PipelineExecutor:
         return job_id
 
     def get_job(self, job_id: str) -> Optional[PipelineJob]:
-        """Get job by ID"""
+        """
+        Retrieve a job by its ID.
+
+        Args:
+            job_id (str): ID of the job.
+
+        Returns:
+            Optional[PipelineJob]: The job object or None if not found.
+        """
         return self.jobs.get(job_id)
 
     def list_jobs(self, limit: int = 50) -> List[PipelineJob]:
-        """List recent jobs"""
+        """
+        List recent pipeline jobs, sorted by creation date (newest first).
+
+        Args:
+            limit (int): Maximum number of jobs to return.
+
+        Returns:
+            List[PipelineJob]: List of stored pipeline jobs.
+        """
         jobs = sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
         return jobs[:limit]
 
     def cancel_job(self, job_id: str) -> bool:
-        """Cancel a running job"""
+        """
+        Cancel a running pipeline job.
+
+        Logic:
+        1. Checks if job exists and is running.
+        2. Terminates the underlying subprocess if active.
+        3. Updates job status to CANCELLED.
+        4. Saves job state.
+
+        Args:
+            job_id (str): ID of the job to cancel.
+
+        Returns:
+            bool: True if cancellation was initiated/successful, False if job not found or not running.
+        """
         job = self.jobs.get(job_id)
         if not job:
             return False
@@ -121,12 +184,30 @@ class PipelineExecutor:
         return True
 
     async def execute_job_async(self, job_id: str) -> bool:
-        """Execute pipeline job asynchronously"""
+        """
+        Execute pipeline job asynchronously using the internal thread pool.
+
+        Args:
+            job_id (str): ID of the job to execute.
+
+        Returns:
+            bool: Correlation of the thread submission (awaitable).
+        """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self._executor, self.execute_job, job_id)
 
     def _resolve_python_executable(self) -> str:
-        """Find the best python executable (mp_env > venv > sys.executable)"""
+        """
+        Find the best Python executable for running the pipeline subprocess.
+
+        Logic:
+        1. Checks for 'mp_env' (MediaPipe environment).
+        2. Checks for 'venv' (Standard virtual environment).
+        3. Fallback to current system executable (sys.executable).
+
+        Returns:
+            str: Path to the selected Python executable.
+        """
         # 1. Try mp_env (preferred as it has working ML dependencies)
         mp_python = self.project_root / "mp_env" / "Scripts" / "python.exe"
         if mp_python.exists():
@@ -141,7 +222,27 @@ class PipelineExecutor:
         return sys.executable
 
     def execute_job(self, job_id: str) -> bool:
-        """Execute pipeline job"""
+        """
+        Execute pipeline job synchronously in a subprocess.
+
+        Logic:
+        1. Validates job existence and status.
+        2. Updates job status to RUNNING.
+        3. Resolves paths (pipeline script, video file, python executable).
+        4. Constructs command line arguments based on job config.
+        5. Launches the pipeline subprocess.
+        6. Monitors stdout line-by-line:
+           - Captures logs.
+           - Parses progress using PipelineLogParser.
+           - Updates job state/progress in real-time.
+        7. Handles completion (success/error) and updates video global status.
+
+        Args:
+            job_id (str): ID of the job to run.
+
+        Returns:
+            bool: True if execution succeeded, False otherwise.
+        """
         job = self.jobs.get(job_id)
         if not job:
             logger.error(f"Job not found: {job_id}")
@@ -294,7 +395,20 @@ class PipelineExecutor:
             return False
 
     def _find_video_path(self, video_name: str) -> Optional[Path]:
-        """Find video file path"""
+        """
+        Resolve absolute path to a video file.
+
+        Logic:
+        1. Checks if video_name already includes an extension and exists.
+        2. Tries appending standard video extensions (.mp4, .avi, etc.).
+        3. Tries matching the file stem if extensions are mixed.
+
+        Args:
+            video_name (str): Name or path of the video.
+
+        Returns:
+            Optional[Path]: Absolute path to the video or None if not found.
+        """
         videos_dir = self.project_root / "data" / "videos"
 
         # Try with extension
@@ -318,7 +432,13 @@ class PipelineExecutor:
         return None
 
     def _update_video_status(self, video_name: str, status: VideoStatus) -> None:
-        """Update video metadata status"""
+        """
+        Update the status of a video in the global metadata file.
+
+        Args:
+            video_name (str): Name of the video.
+            status (VideoStatus): New status to apply (e.g., PARTIAL, PROCESSED).
+        """
         try:
             # Load metadata
             metadata_path = self.project_root / "video_metadata.json"
@@ -360,7 +480,15 @@ class PipelineExecutor:
             logger.error(f"Failed to update video status: {e}")
 
     def cleanup_old_jobs(self, days: int = 7) -> int:
-        """Remove jobs older than specified days"""
+        """
+        Remove jobs older than a specified number of days to keep history clean.
+
+        Args:
+            days (int): Retention period in days.
+
+        Returns:
+            int: Number of jobs removed.
+        """
         cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)
         removed = 0
 

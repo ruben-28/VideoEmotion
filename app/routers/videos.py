@@ -14,6 +14,20 @@ router = APIRouter(prefix="/api/videos", tags=["Videos"])
 
 
 def _get_video_urls(video_name: str) -> dict:
+    """
+    Helper to resolve static URLs for video playback and thumbnails.
+
+    Logic:
+    - Checks for the existence of visualized output (H264 or Raw).
+    - Checks for Realtime session recordings.
+    - Fallback to the original raw uploaded video.
+
+    Args:
+        video_name (str): The identifier name of the video.
+
+    Returns:
+        dict: Contains 'video_url' and 'thumbnail_url'.
+    """
     viz_h264 = (
         settings.server.PROJECT_ROOT
         / settings.project.paths.visualizations
@@ -62,7 +76,25 @@ async def list_videos(
     per_page: int = Query(50, ge=1, le=100),
     video_manager: VideoManager = Depends(get_video_manager),
 ):
-    """List all active videos with optional filters"""
+    """
+    List all active videos with optional filters, sorting, and pagination.
+
+    Logic:
+    - Calls video_manager to get sorted and filtered list.
+    - Applies pagination slicing.
+    - Models the response using Pydantic schemas.
+
+    Args:
+        mode (str): Filter ('offline' or 'realtime').
+        status (str): Filter ('processed', etc.).
+        sort_by (str): Field to sort by.
+        sort_order (str): 'asc' or 'desc'.
+        page (int): Page number (1-based).
+        per_page (int): Items per page.
+    
+    Returns:
+        VideoListResponse: Object containing list of videos and pagination metadata.
+    """
     try:
         video_mode = VideoMode(mode) if mode else None
         video_status = VideoStatus(status) if status else None
@@ -114,7 +146,12 @@ async def list_videos(
 async def list_unprocessed_videos(
     video_manager: VideoManager = Depends(get_video_manager),
 ):
-    """List unprocessed offline videos"""
+    """
+    List only videos that are currently marked as UNPROCESSED.
+
+    Returns:
+        dict: Simple list of unprocessed videos for quick UI checking.
+    """
     videos = video_manager.get_unprocessed_videos()
     video_responses = []
     for v in videos:
@@ -139,7 +176,18 @@ async def list_unprocessed_videos(
 async def get_video(
     video_id: str, video_manager: VideoManager = Depends(get_video_manager)
 ):
-    """Get video details by ID"""
+    """
+    Get detailed information for a specific video.
+
+    Args:
+        video_id (str): Unique video identifier.
+
+    Raises:
+        VideoNotFoundError: If ID does not exist.
+
+    Returns:
+        VideoResponse: Full video details including statistics and file URLs.
+    """
     video = video_manager.get_video(video_id)
     if not video:
         raise VideoNotFoundError(video_id)
@@ -164,7 +212,13 @@ async def scan_videos(
     background_tasks: BackgroundTasks,
     video_manager: VideoManager = Depends(get_video_manager),
 ):
-    """Trigger video scan to update inventory"""
+    """
+    Trigger a manual background scan of the filesystem.
+    This ensures the video inventory is up-to-date with disk changes.
+
+    Side Effects:
+        - Launches a background thread to update metadata store.
+    """
     background_tasks.add_task(video_manager.scan_videos_async)
     return {"message": "Video scan started", "status": "pending"}
 
@@ -177,7 +231,21 @@ async def delete_video(
     trash_manager: TrashManager = Depends(get_trash_manager),
     stats_updater: StatsUpdater = Depends(get_stats_updater),
 ):
-    """Move video to trash"""
+    """
+    Soft-delete a video by moving it to the system trash.
+
+    Logic:
+    1. Verifies video exists.
+    2. Calls TrashManager to move files to trash directory.
+    3. Triggers immediate re-scan to update inventory.
+    4. Queues background stats recalculation.
+
+    Args:
+        video_id (str): ID of video to delete.
+
+    Returns:
+        dict: Success message and new trash_id.
+    """
     video = video_manager.get_video(video_id)
     if not video:
         raise VideoNotFoundError(video_id)

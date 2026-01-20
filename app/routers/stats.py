@@ -14,7 +14,17 @@ async def get_stats(
     video_manager: VideoManager = Depends(get_video_manager),
     trash_manager: TrashManager = Depends(get_trash_manager),
 ):
-    """Get global statistics"""
+    """
+    Get global statistics about the system.
+
+    Logic:
+    1. Fetches video inventory statistics from VideoManager.
+    2. Fetches trash statistics from TrashManager.
+    3. Aggregates data into StatsResponse.
+
+    Returns:
+        StatsResponse: Object containing counts and sizes of inventory and trash.
+    """
     video_stats = video_manager.get_stats()
     trash_stats = trash_manager.get_trash_stats()
 
@@ -36,6 +46,16 @@ async def refresh_stats(
     background_tasks: BackgroundTasks,
     stats_updater: StatsUpdater = Depends(get_stats_updater),
 ):
-    """Force statistics recalculation"""
+    """
+    Force asynchronous recalculation of all statistics.
+    Useful if manual file operations have occurred.
+
+    Args:
+        background_tasks (BackgroundTasks): FastAPI task runner.
+        stats_updater (StatsUpdater): Service to run recalculation.
+
+    Returns:
+        dict: Status message indicating the process has commenced.
+    """
     background_tasks.add_task(stats_updater.recalculate_all_stats)
     return {"message": "Statistics refresh started", "status": "pending"}

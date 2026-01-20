@@ -6,13 +6,20 @@ from typing import Dict, Any, Optional
 
 def aggregate_video_results(emotion_video_root: Path, output_json_path: Path) -> Path:
     """
-    Scanne emotion_video_root pour trouver tous les analyzed_emotions.json,
-    les fusionne en un seul dict, et sauve dans output_json_path.
-    Retourne output_json_path.
+    Scan emotion_video_root for all analyzed_emotions.json files,
+    merge them into a single dictionary, and save to output_json_path.
 
-    - Evite les collisions de clés en préfixant si nécessaire.
-    - Supporte les structures typiques où on a:
-        emotion_video_root/frames_fpsX/.../analyzed_emotions.json
+    Logic:
+    - Recursively finds all 'analyzed_emotions.json'.
+    - Merges content. If keys collide, prefixes them with the relative path to ensure uniqueness.
+    - Used to aggregate potentially fragmented analysis results.
+
+    Args:
+        emotion_video_root (Path): Root directory to scan.
+        output_json_path (Path): Path to save the aggregated JSON.
+
+    Returns:
+        Path: The path to the saved output file.
     """
     emotion_video_root = Path(emotion_video_root)
     output_json_path = Path(output_json_path)
@@ -59,7 +66,14 @@ def frames_dir_name_from_fps(fps: int) -> str:
 
 def resolve_source_video(videos_dir: Path, video_name: str) -> Optional[Path]:
     """
-    Trouve la vidéo source dans data/videos selon extensions.
+    Find source video file in videos_dir by trying standard extensions.
+
+    Args:
+        videos_dir (Path): Base directory for videos.
+        video_name (str): Name of the video (stem).
+
+    Returns:
+        Optional[Path]: Absolute path to valid video file, or None.
     """
     videos_dir = Path(videos_dir)
     for ext in [".mp4", ".avi", ".mov", ".mkv"]:
@@ -71,8 +85,15 @@ def resolve_source_video(videos_dir: Path, video_name: str) -> Optional[Path]:
 
 def maybe_find_bboxes_json(detected_video_root: Path, fps: int) -> Optional[Path]:
     """
-    Chemin attendu : data/detected_faces/<video_name>/frames_fpsX/bboxes.json
-    (match ton exemple).
+    Attempt to locate bboxes.json in the expected path.
+    Expected: data/detected_faces/<video_name>/frames_fpsX/bboxes.json
+
+    Args:
+        detected_video_root (Path): Root for detected faces of a specific video.
+        fps (int): Frame rate used.
+
+    Returns:
+        Optional[Path]: Path to bboxes.json if it exists.
     """
     detected_video_root = Path(detected_video_root)
     p = detected_video_root / frames_dir_name_from_fps(fps) / "bboxes.json"
@@ -98,8 +119,14 @@ def ffmpeg_available() -> bool:
 
 def transcode_to_h264(src: Path, dst: Path) -> Tuple[bool, str]:
     """
-    Create a browser-friendly mp4 (H264 yuv420p).
-    Returns (ok, message).
+    Transcode video to H.264 (yuv420p) for compatibility with web browsers.
+
+    Args:
+        src (Path): Source video path.
+        dst (Path): Destination video path.
+
+    Returns:
+        Tuple[bool, str]: (Success status, Error message or stderr output).
     """
     try:
         cmd = [

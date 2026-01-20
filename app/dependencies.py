@@ -14,6 +14,10 @@ from app.config import settings
 
 @lru_cache()
 def get_video_manager() -> VideoManager:
+    """
+    Singleton factory for VideoManager.
+    Initialized with the global VideoScanner, MetadataStore, and StatsCalculator.
+    """
     # Manual Dependency Injection
     return VideoManager(
         project_root=settings.server.PROJECT_ROOT,
@@ -31,6 +35,10 @@ def get_video_manager() -> VideoManager:
 
 @lru_cache()
 def get_trash_manager() -> TrashManager:
+    """
+    Singleton factory for TrashManager.
+    Configured with project and trash root directories.
+    """
     return TrashManager(
         project_root=settings.server.PROJECT_ROOT,
         trash_root=settings.server.PROJECT_ROOT / settings.project.paths.trash,
@@ -39,16 +47,28 @@ def get_trash_manager() -> TrashManager:
 
 @lru_cache()
 def get_stats_updater() -> StatsUpdater:
+    """
+    Singleton factory for StatsUpdater.
+    Used for background recalculation of statistics.
+    """
     return StatsUpdater(project_root=settings.server.PROJECT_ROOT)
 
 
 @lru_cache()
 def get_pipeline_executor() -> PipelineExecutor:
+    """
+    Singleton factory for PipelineExecutor.
+    Manages offline analysis jobs.
+    """
     return PipelineExecutor(project_root=settings.server.PROJECT_ROOT)
 
 
 @lru_cache()
 def get_realtime_manager() -> RealtimeManager:
+    """
+    Singleton factory for RealtimeManager.
+    Auto-detects 'mp_env' Python executable for running realtime scripts if available.
+    """
     # Logic to select python from mp_env if exists
     mp_env_python = settings.server.PROJECT_ROOT / "mp_env" / "Scripts" / "python.exe"
     python_exec = str(mp_env_python) if mp_env_python.exists() else sys.executable

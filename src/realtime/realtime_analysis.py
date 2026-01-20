@@ -22,6 +22,15 @@ logger = logging.getLogger("realtime_analysis")
 
 
 def load_config(config_path: Path) -> Dict[str, Any]:
+    """
+    Safely load YAML configuration file.
+
+    Args:
+        config_path (Path): Path to config file.
+
+    Returns:
+        Dict[str, Any]: Loaded config or empty dict on failure.
+    """
     if not config_path.exists():
         return {}
     try:
@@ -33,6 +42,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
 
 
 def cfg_get(cfg: Dict[str, Any], *keys, default=None):
+    """Deep retrieval of config keys with default value."""
     cur: Any = cfg
     for k in keys:
         if not isinstance(cur, dict) or k not in cur:
@@ -64,6 +74,17 @@ def clip_box(
 
 
 def pick_largest_detection(detections, W: int, H: int):
+    """
+    Select the largest face from multiple detections.
+
+    Args:
+        detections: MediaPipe detections.
+        W (int): Image width.
+        H (int): Image height.
+
+    Returns:
+        Tuple[int, int, int, int]: (x, y, w, h) of largest face, or None.
+    """
     best = None
     best_area = 0
     for det in detections:
@@ -85,8 +106,15 @@ import shutil
 
 def transcode_to_h264(src: Path, dst: Path) -> bool:
     """
-    Rend la vidéo lisible Chrome/Streamlit (H.264 + yuv420p + faststart).
-    Cherche automatiquement ffmpeg.
+    Transcode output video to H.264 for browser compatibility.
+    Uses ffmpeg (must be in PATH).
+
+    Args:
+        src (Path): Input video.
+        dst (Path): Output H.264 video.
+
+    Returns:
+        bool: True if successful.
     """
     ffmpeg_bin = shutil.which("ffmpeg")
 

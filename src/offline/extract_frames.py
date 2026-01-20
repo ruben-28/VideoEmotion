@@ -36,9 +36,22 @@ def resolve_from_project(project_root: Path, p: Optional[str]) -> Path:
 
 def extract_frames(video_path, output_folder, frame_rate=5):
     """
-    Extract frames into a FIXED folder (no timestamp):
-    output_folder/frames_fps{frame_rate}/
-    Example filename: frame_00023_t00012340.jpg
+    Extract frames from a video file at a specific frame rate.
+
+    Logic:
+    - Calculates frame interval based on FPS.
+    - Iterates through the video using OpenCV.
+    - Saves frames only when the timestamp threshold is reached.
+    - Files are named: frame_XXXXX_tYYYYYYY.jpg (YYYYYYY = ms).
+    - Skips extraction if frames already exist in the target folder.
+
+    Args:
+        video_path (str): Path to input video.
+        output_folder (str): Directory where frames will be saved (e.g. .../video_name).
+        frame_rate (int): Frames Per Second to extract.
+
+    Returns:
+        bool: True if successful or skipped, False on error.
     """
 
     frames_dir = os.path.join(output_folder, f"frames_fps{frame_rate}")
@@ -84,6 +97,14 @@ def extract_frames(video_path, output_folder, frame_rate=5):
 
 
 def extract_all_new_videos(videos_dir, extracted_root, frame_rate=5):
+    """
+    Batch process all video files in a directory.
+
+    Args:
+        videos_dir (str): Input directory containing videos.
+        extracted_root (str): Output root directory.
+        frame_rate (int): Extraction FPS.
+    """
     os.makedirs(extracted_root, exist_ok=True)
 
     for filename in os.listdir(videos_dir):

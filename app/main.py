@@ -34,6 +34,10 @@ app.add_middleware(
 # Global Exception Handler
 @app.exception_handler(AppError)
 async def app_exception_handler(request: Request, exc: AppError):
+    """
+    Handle known application errors (AppError).
+    Maps specific exceptions (like VideoNotFoundError) to appropriate HTTP status codes.
+    """
     status_code = 500
     if isinstance(exc, VideoNotFoundError):
         status_code = 404
@@ -52,6 +56,10 @@ async def app_exception_handler(request: Request, exc: AppError):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all exception handler for unexpected server errors.
+    Logs the error stack trace and returns a generic 500 response.
+    """
     logger.error(f"Global exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
@@ -88,6 +96,9 @@ app.mount(
 
 @app.get("/")
 async def root():
+    """
+    Root endpoint to verify API availability and version.
+    """
     return {
         "name": settings.project.name,
         "version": settings.project.version,
@@ -97,12 +108,22 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    """
+    Simple health check endpoint for monitoring purposes.
+    """
     return {"status": "healthy"}
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Run on application startup"""
+    """
+    Run on application startup.
+    
+    Tasks:
+    1. Initialize singleton services (VideoManager, PipelineExecutor).
+    2. Perform an initial video scan synchronization.
+    3. Clean up old pipeline jobs (older than 7 days).
+    """
     logger.info("VideoEmotion API starting up...")
 
     # Initialize Core Services (cached)

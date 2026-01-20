@@ -16,7 +16,22 @@ async def run_pipeline(
     pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor),
     video_manager: VideoManager = Depends(get_video_manager),
 ):
-    """Start pipeline execution for a video"""
+    """
+    Start pipeline execution for a video.
+
+    Logic:
+    1. Parses arguments and creates configuration.
+    2. Creates a new job via PipelineExecutor.
+    3. Schedules execution in BackgroundTasks.
+    4. Wrapper function ensures re-scan occurs after pipeline completion.
+
+    Args:
+        request (PipelineRunRequest): Request body containing video name and options.
+        background_tasks (BackgroundTasks): FastAPI background task manager.
+
+    Returns:
+        PipelineJobResponse: Initial status of the created job.
+    """
     # Create config from options
     options = request.options or {}
     config = PipelineConfig(
@@ -69,7 +84,15 @@ async def run_pipeline(
 async def get_job_status(
     job_id: str, pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor)
 ):
-    """Get pipeline job status"""
+    """
+    Get current status of a specific pipeline job.
+
+    Args:
+        job_id (str): ID of the job.
+
+    Returns:
+        PipelineJobResponse: Detailed job info including progress and recent logs.
+    """
     job = pipeline_executor.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -92,7 +115,15 @@ async def list_jobs(
     limit: int = Query(50, ge=1, le=100),
     pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor),
 ):
-    """List recent pipeline jobs"""
+    """
+    List recent pipeline jobs.
+
+    Args:
+        limit (int): Max jobs to return.
+
+    Returns:
+        dict: List of jobs and total count.
+    """
     jobs = pipeline_executor.list_jobs(limit=limit)
 
     responses = []
@@ -118,7 +149,18 @@ async def list_jobs(
 async def cancel_job(
     job_id: str, pipeline_executor: PipelineExecutor = Depends(get_pipeline_executor)
 ):
-    """Cancel a running pipeline job"""
+    """
+    Cancel a running pipeline job.
+    
+    Args:
+        job_id (str): ID of the job to cancel.
+        
+    Returns:
+        dict: Success message.
+        
+    Raises:
+        HTTPException: If job cannot be cancelled.
+    """
     success = pipeline_executor.cancel_job(job_id)
 
     if success:

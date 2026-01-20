@@ -11,12 +11,30 @@ class VideoScanner:
     """
 
     def __init__(self, videos_dir: Path, realtime_dir: Path):
+        """
+        Initialize VideoScanner.
+
+        Args:
+            videos_dir (Path): Directory for offline videos.
+            realtime_dir (Path): Directory for realtime sessions.
+        """
         self.videos_dir = Path(videos_dir)
         self.realtime_dir = Path(realtime_dir)
         self.video_extensions = {".mp4", ".avi", ".mov", ".mkv"}
 
     def scan_offline(self) -> List[Path]:
-        """Scan data/videos for video files"""
+        """
+        Scan the offline videos directory for valid video files.
+
+        Logic:
+        1. Iterates subdirectories in 'data/videos'.
+           - Prioritizes video file matching the folder name (e.g. MyVideo/MyVideo.mp4).
+        2. Iterates files in the root 'data/videos' (legacy support).
+           - Excludes converted versions (e.g., _h264).
+
+        Returns:
+            List[Path]: List of absolute paths to found video files.
+        """
         videos_dir = self.videos_dir
         found_videos = []
 
@@ -51,7 +69,15 @@ class VideoScanner:
         return found_videos
 
     def scan_realtime(self) -> List[Path]:
-        """Scan output/realtime for session directories"""
+        """
+        Scan the realtime directory for session folders.
+
+        Logic:
+        - Looks for directories starting with 'session_' in the realtime root.
+
+        Returns:
+            List[Path]: List of paths to valid session directories.
+        """
         realtime_dir = self.realtime_dir
         found_sessions = []
 
