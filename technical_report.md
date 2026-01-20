@@ -14,10 +14,6 @@
 ### Team Members
 * BENSIMON RUBEN 
 * SARFATI ETHAN 
-<<<<<<< HEAD
-
-=======
->>>>>>> e3e83decd6e215593a76fb58281e1b6247ba3694
 
 ### Context and Motivation
 Understanding human emotional responses is critical across various fields, from market research (ad testing) to psychological studies and user experience (UX) evaluation. Traditional methods often rely on subjective self-reporting or manual annotation, which are time-consuming and prone to bias. **VideoEmotion** was developed to bridge this gap by providing an automated, scalable solution for detecting and classifying human emotions in video content using state-of-the-art Computer Vision (CV) and Machine Learning (ML) techniques.
