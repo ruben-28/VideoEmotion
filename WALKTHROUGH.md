@@ -13,7 +13,66 @@ This guide provides detailed instructions on how to execute each component of th
 *   Most scripts support the `--help` flag to list all available options.
 
 ---
+## 0. Installation & Setup (First Time Only)
 
+**Prerequisites:**
+* **Python 3.10+**
+* **Node.js (LTS)**: Download the `.msi` installer from [nodejs.org](https://nodejs.org/). Do not use the Docker version.
+
+### Step 1: Backend Setup (Python)
+
+1.  **Create a virtual environment:**
+    ```bash
+    # Windows
+    python -m venv venv
+    venv\Scripts\activate
+
+    # Mac/Linux
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+2.  **Install dependencies:**
+    This will automatically handle CPU-versions of PyTorch if configured in requirements.txt.
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3.  **Create required folders (Manual Method):**
+    *Note: The application attempts to create these automatically, but you can create them manually to be safe.*
+    ```bash
+    mkdir data\videos
+    mkdir data\extracted_frames
+    mkdir data\detected_faces
+    mkdir output\emotion_results
+    mkdir output\reports
+    mkdir output\visualizations
+    mkdir output\thumbnails
+    ```
+
+### Step 2: Frontend Setup (Next.js)
+
+1.  Navigate to the frontend directory (e.g., `frontend/` or `ui/`):
+    ```bash
+    cd frontend
+    ```
+2.  Install JavaScript dependencies:
+    ```bash
+    npm install
+    ```
+3.  Start the frontend server:
+    ```bash
+    npm run dev
+    ```
+
+### ⚠️ Important Note for Windows Users
+If you encounter a `UnicodeEncodeError` (charmap codec) when running the backend, you must set the encoding in your terminal before starting the server:
+
+```bash
+set PYTHONIOENCODING=utf-8
+python -m app.main
+```
+---
 ## 1. Backend API Server (`app/main.py`)
 
 **Purpose**: Starts the FastAPI server, serving the REST API and the static file mounts. This is the main entry point for the "Production" mode.
