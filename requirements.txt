@@ -1,11 +1,12 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 
 # API & Web
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 pydantic==2.10.0
+pydantic-settings
 python-multipart==0.0.12
 requests==2.32.0
-
 
 # Data Science & Visualization
 numpy==1.26.4
@@ -18,13 +19,13 @@ plotly==5.24.0
 opencv-python==4.10.0.84
 pillow==12.0.0
 mediapipe==0.10.21
-protobuf==4.25.8
+protobuf
 
 # ML / AI Frameworks
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
-tensorflow==2.20.0
-tf_keras==2.20.1
+tensorflow==2.15.0
+tf_keras
 hsemotion==0.3.0
 deepface==0.0.96
 timm==0.9.16
