@@ -97,8 +97,8 @@ def resolve_from_project(project_root: Path, p: Optional[str]) -> Path:
 
 def apply_config_overrides(cfg: Dict[str, Any]) -> None:
     """
-    Override les variables globales depuis config.yaml (si présent).
-    On ne touche à rien si les clés n'existent pas.
+    Override global variables from config.yaml (if present).
+    We don't touch anything if the keys do not exist.
     """
     global MIN_FACE_SIZE
     global BLUR_MIN_VAR_LAPLACIAN, BRIGHTNESS_MIN, BRIGHTNESS_MAX
@@ -316,7 +316,7 @@ def identity_id(face_id: int, track_id: int) -> int:
 
 
 def _norm_key(s: str) -> str:
-    """Normalise en clé stable: slash/backslash/espaces -> '_'."""
+    """Normalize to stable key: slash/backslash/spaces -> '_'."""
     s = (s or "").replace("\\", "/").strip("/")
     s = re.sub(r"\s+", "_", s)
     s = s.replace("/", "_")
@@ -325,8 +325,8 @@ def _norm_key(s: str) -> str:
 
 def extract_person_folder(rel_dir: str) -> Optional[str]:
     """
-    Cherche un segment 'person_0000' dans rel_dir.
-    Retourne 'person_0000' si trouvé, sinon None.
+    Search for a 'person_0000' segment in rel_dir.
+    Returns 'person_0000' if found, otherwise None.
     """
     if not rel_dir:
         return None
@@ -340,8 +340,8 @@ def extract_person_folder(rel_dir: str) -> Optional[str]:
 
 def extract_video_key(rel_dir: str) -> str:
     """
-    Déduit la 'vidéo' à partir de rel_dir en supprimant person_XXXX.
-    Exemple:
+    Deduces the 'video' from rel_dir by removing person_XXXX.
+    Example:
       bedouk/frames_.../person_0000  -> bedouk_frames_...
     """
     if not rel_dir:
@@ -356,7 +356,7 @@ def extract_video_key(rel_dir: str) -> str:
 
 def make_global_person_id(rel_dir: str, identity_id_int: int) -> str:
     """
-    Construit un identifiant global unique:
+    Constructs a unique global identifier:
       <video_key>_<person_XXXX>
     """
     video_key = extract_video_key(rel_dir)
@@ -482,7 +482,7 @@ def apply_centered_smoothing(
     entries: List[dict], window: int, key_emotion: str, out_key: str
 ):
     if window % 2 != 1 or window < 3:
-        raise ValueError("window doit être impair et >= 3")
+        raise ValueError("window must be odd and >= 3")
 
     half = window // 2
     n = len(entries)
@@ -505,7 +505,7 @@ def apply_smoothing_score_on_key(
     out_winsize_key: str,
 ):
     if window % 2 != 1 or window < 3:
-        raise ValueError("window doit être impair et >= 3")
+        raise ValueError("window must be odd and >= 3")
 
     half = window // 2
     n = len(entries)
@@ -665,13 +665,13 @@ class DeepFaceEmotionDetector:
 class HSEmotionDetector:
     def __init__(self, device: str = "cpu"):
         self._printed_error = False
-        print("[HSEmotionDetector] Chargement du modèle HSEmotion...")
+        print("[HSEmotionDetector] Loading HSEmotion model...")
         from hsemotion.facial_emotions import HSEmotionRecognizer
 
         self.model = HSEmotionRecognizer(
             model_name="enet_b0_8_best_vgaf", device=device
         )
-        print("[HSEmotionDetector] Modèle chargé")
+        print("[HSEmotionDetector] Model loaded")
 
     def analyze_once(self, img_bgr: np.ndarray) -> Tuple[Optional[str], float]:
         if img_bgr is None or img_bgr.size == 0:
@@ -690,7 +690,7 @@ class HSEmotionDetector:
             except Exception:
                 if not self._printed_error:
                     self._printed_error = True
-                    print("[HSEmotionDetector] ERREUR (une seule fois) :")
+                    print("[HSEmotionDetector] ERROR (only once):")
                     traceback.print_exc()
                 return None, 0.0
 
@@ -783,7 +783,7 @@ def analyze_emotions_incremental(
     faces_root: str, output_root: str, master_json_path: str
 ):
     """
-    Pipeline inchangé, paramètres peuvent être overridés via config.yaml.
+    Pipeline unchanged, parameters can be overridden via config.yaml.
     """
     os.makedirs(output_root, exist_ok=True)
     master_results = load_master_json(master_json_path)
@@ -813,14 +813,14 @@ def analyze_emotions_incremental(
 
         if dir_fully_processed(rel_dir, img_files, master_results) and local_out_exists:
             print(
-                f"[SKIP] Dossier déjà analysé (master complet + output présent): {rel_dir}"
+                f"[SKIP] Folder already analyzed (master complete + output present): {rel_dir}"
             )
             continue
 
         for filename in img_files:
             rel_path = filename if rel_dir == "." else os.path.join(rel_dir, filename)
-            # IMPORTANT: Ne sauter que si on a déjà le résultat au global ET que le fichier local existe.
-            # Sinon, on doit régénérer le fichier local.
+            # IMPORTANT: Only skip if we already have the global result AND the local file exists.
+            # Otherwise, we must regenerate the local file.
             if rel_path in master_results and local_out_exists:
                 continue
 
@@ -850,7 +850,7 @@ def analyze_emotions_incremental(
             )
 
     if not tasks:
-        print("Aucune nouvelle image à analyser. Tout est déjà à jour")
+        print("No new image to analyze. Everything is up to date")
         return
 
     tasks.sort(key=lambda t: (t.rel_dir, t.identity_id, t.frame_index, t.filename))
@@ -861,7 +861,7 @@ def analyze_emotions_incremental(
     for t in tasks:
         image = cv2.imread(t.image_path)
         if image is None:
-            print(f"Erreur: impossible de lire {t.image_path}")
+            print(f"Error: unable to read {t.image_path}")
             continue
 
         h, w = image.shape[:2]
@@ -1060,13 +1060,13 @@ def analyze_emotions_incremental(
         with open(final_json_path, mode="w", encoding="utf-8") as f:
             json.dump(final_only, f, indent=4, ensure_ascii=False)
 
-        print(f"{len(rows)} faces analysées pour le dossier '{rel_dir}'")
+        print(f"{len(rows)} faces analyzed for folder '{rel_dir}'")
         print(f"-> CSV :        {csv_path}")
         print(f"-> JSON :       {json_path}")
         print(f"-> JSON final : {final_json_path}")
 
     save_master_json(master_results, master_json_path)
-    print(f"Master JSON mis à jour : {master_json_path}")
+    print(f"Master JSON updated: {master_json_path}")
 
 
 # =============================================================================
@@ -1084,12 +1084,12 @@ def main():
         "--master-json", default=None, help="Override master json path."
     )
     parser.add_argument(
-        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+        "--project-root", default=None, help="Project root (default: auto)."
     )
     parser.add_argument(
         "--config",
         default=None,
-        help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).",
+        help="Path to config.yaml (default: <project-root>/config.yaml).",
     )
 
     args = parser.parse_args()
@@ -1109,7 +1109,7 @@ def main():
     # Override globals (config -> globals)
     apply_config_overrides(cfg)
 
-    # Paths par défaut depuis config
+    # Default paths from config
     cfg_faces_root = cfg_get(
         cfg, "paths", "detected_faces", default="data/detected_faces"
     )
@@ -1134,7 +1134,7 @@ def main():
         master_json_path = (output_root / "emotion_results_master.json").resolve()
 
     if not faces_root.exists():
-        print(f"[ERREUR] Dossier faces introuvable: {faces_root}")
+        print(f"[ERROR] Faces folder not found: {faces_root}")
         return
 
     output_root.mkdir(parents=True, exist_ok=True)

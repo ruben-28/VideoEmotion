@@ -49,12 +49,12 @@ class HSEmotionDetector:
 
 class EmotionInfer:
     """
-    Inférence temps réel HSEmotion only.
+    Realtime inference HSEmotion only.
 
-    Logique:
-    - Si conf < uncertain_min_conf => Uncertain
-    - Si conf >= hse_threshold => "hsemotion"
-    - Sinon => "hsemotion_low" (on affiche quand même l'émotion)
+    Logic:
+    - If conf < uncertain_min_conf => Uncertain
+    - If conf >= hse_threshold => "hsemotion"
+    - Else => "hsemotion_low" (we still display the emotion)
     """
 
     def __init__(
@@ -77,13 +77,13 @@ class EmotionInfer:
             if (hse_emotion is None) or (hse_conf < self.uncertain_min_conf):
                 return EmotionResult(
                     emotion=None,
-                    confidence=hse_conf,  # ✅ on garde la vraie confiance
+                    confidence=hse_conf,  # ✅ we keep the real confidence
                     backend="hsemotion_uncertain",
                     is_uncertain=True,
                     details={"hse_emotion": hse_emotion, "hse_conf": hse_conf},
                 )
 
-        # Seuil principal
+        # Main threshold
         if hse_emotion is not None and hse_conf >= self.hse_threshold:
             return EmotionResult(
                 emotion=hse_emotion,
@@ -93,7 +93,7 @@ class EmotionInfer:
                 details={},
             )
 
-        # fallback: on renvoie quand même l'émotion si dispo
+        # fallback: we still return the emotion if available
         if hse_emotion is not None:
             return EmotionResult(
                 emotion=hse_emotion,

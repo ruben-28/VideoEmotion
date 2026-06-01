@@ -14,12 +14,12 @@ DEFAULT_ROOT = Path("output/realtime")
 DEFAULT_SESSION_JSON = "realtime_emotions.json"
 DEFAULT_SUMMARY_NAME = "summary.json"
 
-# labels considérés comme "pas une émotion exploitable"
+# labels considered as "not a usable emotion"
 UNKNOWN_LABELS = {"unknown", "none", ""}
 
 
 # =========================
-# CORE (SRP: calcul résumé)
+# CORE (SRP: summary calculation)
 # =========================
 def _normalize_label(v: Any) -> Optional[str]:
     if v is None:
@@ -35,9 +35,9 @@ def _normalize_label(v: Any) -> Optional[str]:
 def _pick_emotion(rec: Dict[str, Any]) -> Optional[str]:
     """
     IMPORTANT (Realtime):
-    realtime_analysis.py enregistre la clé 'emotion'.
+    realtime_analysis.py records the 'emotion' key.
 
-    On garde aussi les clés "offline" pour compatibilité.
+    We also keep the "offline" keys for compatibility.
     """
     for k in (
         "emotion",  # realtime
@@ -69,9 +69,9 @@ def _pick_confidence(rec: Dict[str, Any]) -> Optional[float]:
 def _is_uncertain(rec: Dict[str, Any], emotion: Optional[str]) -> bool:
     """
     Realtime:
-    - on se base en priorité sur le flag 'is_uncertain'
-    - sinon fallback: émotion explicitement 'Uncertain'
-    - sinon fallback: confiance <= 0
+    - we primarily rely on the 'is_uncertain' flag
+    - else fallback: explicit 'Uncertain' emotion
+    - else fallback: confidence <= 0
     """
     if rec.get("is_uncertain") is True:
         return True
@@ -89,9 +89,9 @@ def _is_uncertain(rec: Dict[str, Any], emotion: Optional[str]) -> bool:
 def _extract_time_seconds(rec: Dict[str, Any]) -> Optional[float]:
     """
     Realtime:
-    - 't_rel_ms' (meilleur, temps relatif depuis début)
-    - sinon 'time_ms'
-    Offline éventuel:
+    - 't_rel_ms' (best, relative time from start)
+    - otherwise 'time_ms'
+    Possible offline:
     - timestamp_sec, t_sec, time_sec, ts
     """
     if "t_rel_ms" in rec:
@@ -118,10 +118,10 @@ def _extract_time_seconds(rec: Dict[str, Any]) -> Optional[float]:
 
 def _load_records(data: Any) -> list[Dict[str, Any]]:
     """
-    Supporte plusieurs formats:
+    Supports multiple formats:
     - list[record, ...]
-    - dict avec 'records' (realtime actuel)
-    - dict avec 'frames'
+    - dict with 'records' (current realtime)
+    - dict with 'frames'
     - dict type {"0": rec, "1": rec, ...}
     """
     if isinstance(data, list):
@@ -132,7 +132,7 @@ def _load_records(data: Any) -> list[Dict[str, Any]]:
             return [r for r in data["records"] if isinstance(r, dict)]
         if "frames" in data and isinstance(data["frames"], list):
             return [r for r in data["frames"] if isinstance(r, dict)]
-        # dict classique
+        # classic dict
         return [r for r in data.values() if isinstance(r, dict)]
 
     return []
@@ -159,7 +159,7 @@ def summarize_json(json_path: Path) -> Dict[str, Any]:
     for rec in records:
         emo = _pick_emotion(rec)
 
-        # si pas d'émotion, on considère unknown (mais on ne veut pas que ça devienne dominant)
+        # if no emotion, we consider unknown (but we don't want it to become dominant)
         emo_norm = emo if emo is not None else "unknown"
         emotions.append(emo_norm)
 
@@ -173,7 +173,7 @@ def summarize_json(json_path: Path) -> Dict[str, Any]:
     nb = len(emotions)
     counts = Counter(emotions)
 
-    # dominante: on ignore unknown + Uncertain si possible
+    # dominant: we ignore unknown + Uncertain if possible
     counts_for_dom = Counter(
         {
             k: v
@@ -187,16 +187,16 @@ def summarize_json(json_path: Path) -> Dict[str, Any]:
         else (counts.most_common(1)[0][0] if counts else None)
     )
 
-    # % par émotion (on garde tout, même uncertain/unknown, c'est informatif)
+    # % per emotion (we keep everything, even uncertain/unknown, it's informative)
     perc = {emo: round((c / nb) * 100.0, 2) for emo, c in counts.items()} if nb else {}
 
-    # durée:
-    # - si on a des temps relatifs, la durée = max(times)
-    # - sinon fallback = max-min
+    # duration:
+    # - if we have relative times, duration = max(times)
+    # - otherwise fallback = max-min
     duration = 0.0
     if len(times) >= 1:
         tmin, tmax = min(times), max(times)
-        # si on est en relatif (t_rel_ms), tmin devrait être proche de 0
+        # if we are in relative time (t_rel_ms), tmin should be close to 0
         duration = tmax if tmin <= 0.001 else (tmax - tmin)
         if duration < 0:
             duration = 0.0
@@ -241,14 +241,14 @@ def run_one_session(
 ) -> None:
     session_dir = root / session_name
     if not session_dir.exists():
-        raise FileNotFoundError(f"Session inexistante: {session_dir}")
+        raise FileNotFoundError(f"Session not found: {session_dir}")
 
     json_path = session_dir / session_json_name
     if not json_path.exists():
-        raise FileNotFoundError(f"Fichier manquant: {json_path}")
+        raise FileNotFoundError(f"Missing file: {json_path}")
 
     out = write_summary(json_path, out_name)
-    print(f"[OK] summary écrit: {out}")
+    print(f"[OK] summary written: {out}")
 
 
 def run_all_sessions(
@@ -262,7 +262,7 @@ def run_all_sessions(
         summary_path = session_dir / out_name
 
         if summary_path.exists() and not force:
-            print(f"[SKIP] {session_dir.name} (déjà présent)")
+            print(f"[SKIP] {session_dir.name} (already present)")
             skipped += 1
             continue
 
@@ -274,10 +274,10 @@ def run_all_sessions(
             print(f"[ERROR] {session_dir.name}: {e}")
             errors += 1
 
-    print("\n=== RÉCAP ===")
-    print(f"Créés    : {done}")
-    print(f"Skippés  : {skipped}")
-    print(f"Erreurs  : {errors}")
+    print("\n=== RECAP ===")
+    print(f"Created  : {done}")
+    print(f"Skipped  : {skipped}")
+    print(f"Errors   : {errors}")
 
 
 # =========================
@@ -285,36 +285,36 @@ def run_all_sessions(
 # =========================
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Pipeline summarize: résume une session (--session) ou toutes (--all)."
+        description="Summarize pipeline: summarizes one session (--session) or all (--all)."
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
-        "--session", help="Nom du dossier session (ex: session_2026-01-10_22-41-06)"
+        "--session", help="Session folder name (e.g. session_2026-01-10_22-41-06)"
     )
     mode.add_argument(
-        "--all", action="store_true", help="Résumer toutes les sessions sous le root"
+        "--all", action="store_true", help="Summarize all sessions under the root"
     )
 
     parser.add_argument(
         "--root",
         default=str(DEFAULT_ROOT),
-        help="Dossier racine des sessions (default: output/realtime)",
+        help="Root sessions folder (default: output/realtime)",
     )
     parser.add_argument(
         "--session-json",
         default=DEFAULT_SESSION_JSON,
-        help="Nom du fichier JSON dans chaque session (default: realtime_emotions.json)",
+        help="JSON file name in each session (default: realtime_emotions.json)",
     )
     parser.add_argument(
         "--out-name",
         default=DEFAULT_SUMMARY_NAME,
-        help="Nom du fichier summary (default: summary.json)",
+        help="Summary file name (default: summary.json)",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Régénérer même si summary existe (utile avec --all)",
+        help="Regenerate even if summary exists (useful with --all)",
     )
 
     return parser

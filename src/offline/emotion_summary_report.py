@@ -275,7 +275,7 @@ def normalize_master(
             out[str(key)] = item
         return out
 
-    raise ValueError("Format JSON non supporté (attendu dict ou list).")
+    raise ValueError("Unsupported JSON format (expected dict or list).")
 
 
 def write_summary_json(out_path: Path, summary: Dict[str, Any]) -> None:
@@ -315,25 +315,25 @@ def write_report_txt(
 ) -> None:
     lines: List[str] = []
     lines.append(
-        f"=== Rapport Résumé Émotions (Étape 1) — Session: {session_label} ===\n"
+        f"=== Emotion Summary Report (Step 1) — Session: {session_label} ===\n"
     )
     for ps in sorted(people, key=lambda x: x.person_id):
         lines.append(f"[{ps.person_id}]")
-        lines.append(f"- Frames analysées : {ps.n_frames}")
+        lines.append(f"- Analyzed frames: {ps.n_frames}")
         lines.append(
-            f"- Émotion dominante : {ps.dominant_emotion} ({ps.dominant_ratio * 100:.1f}%)"
+            f"- Dominant emotion: {ps.dominant_emotion} ({ps.dominant_ratio * 100:.1f}%)"
         )
-        lines.append(f"- Confiance moyenne : {ps.avg_confidence:.3f}")
+        lines.append(f"- Average confidence: {ps.avg_confidence:.3f}")
         lines.append(
-            f"- Stabilité : {ps.stability_score:.3f} (change_rate={ps.change_rate:.3f}, transitions={ps.n_transitions})"
+            f"- Stability: {ps.stability_score:.3f} (change_rate={ps.change_rate:.3f}, transitions={ps.n_transitions})"
         )
         lines.append(
-            f"- Moment le plus intense : {ps.most_intense_emotion} "
+            f"- Most intense moment: {ps.most_intense_emotion} "
             f"(conf={ps.most_intense_confidence:.3f}) à {ps.most_intense_time} "
             f"(frame={ps.most_intense_frame})"
         )
         lines.append(
-            "- Distribution (top) : "
+            "- Distribution (top): "
             + ", ".join([f"{e} {r * 100:.1f}%" for e, r in ps.top_emotions])
         )
         lines.append("")
@@ -581,18 +581,18 @@ def main() -> None:
         "--force", action="store_true", help="Force regen even if summary is newer."
     )
     parser.add_argument(
-        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+        "--project-root", default=None, help="Project root (default: auto)."
     )
     parser.add_argument(
         "--config",
         default=None,
-        help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).",
+        help="Path to config.yaml (default: <project-root>/config.yaml).",
     )
 
     parser.add_argument(
         "--only-session",
         default=None,
-        help="Ne générer que le résumé pour ce groupe (ex: 'test_pipeline').",
+        help="Only generate summary for this group (e.g., 'test_pipeline').",
     )
 
     args = parser.parse_args()
@@ -638,7 +638,7 @@ def main() -> None:
     ensure_dir(out_root)
 
     if not input_root.exists():
-        print("[ERREUR] Dossier introuvable :", input_root.resolve())
+        print("[ERROR] Folder not found:", input_root.resolve())
         return
 
     summary_ts = now_ts()
@@ -656,9 +656,9 @@ def main() -> None:
     all_files.sort(key=lambda p: str(p).lower())
 
     if not all_files:
-        print("[ERREUR] Aucune session trouvée.")
-        print(" - Dossier scanné :", input_root.resolve())
-        print(" - Fichiers cherchés :", ", ".join(candidates))
+        print("[ERROR] No session found.")
+        print(" - Scanned folder:", input_root.resolve())
+        print(" - Searched files:", ", ".join(candidates))
         return
 
     groups: Dict[str, List[Path]] = defaultdict(list)
@@ -666,7 +666,7 @@ def main() -> None:
         label, _ = video_base_key(input_root, f)
         groups[label].append(f)
 
-    # ✅ Filter sur une seule session si demandé
+    # ✅ Filter on a single session if requested
     if args.only_session:
         wanted = args.only_session.strip().lower()
         groups = {
@@ -674,7 +674,7 @@ def main() -> None:
         }
         if not groups:
             print(
-                f"[ERREUR] Aucune session ne correspond à --only-session={args.only_session}"
+                f"[ERROR] No session matches --only-session={args.only_session}"
             )
             return
 
@@ -694,7 +694,7 @@ def main() -> None:
             )
             if status == "skipped":
                 skipped += 1
-                print(f"[SKIP] {label} (résumé déjà à jour)")
+                print(f"[SKIP] {label} (summary already up to date)")
             else:
                 ok += 1
                 print(f"[OK] {label} -> timestamp={summary_ts} (n_files={len(files)})")
@@ -702,12 +702,12 @@ def main() -> None:
             failed += 1
             print(f"[FAIL] {label} -> {type(e).__name__}: {e}")
 
-    print("\n=== Résumé (auto) ===")
-    print(f"Groupes trouvés  : {len(groups)}")
+    print("\n=== Summary (auto) ===")
+    print(f"Groups found    : {len(groups)}")
     print(f"OK              : {ok}")
     print(f"SKIP            : {skipped}")
-    print(f"Échecs          : {failed}")
-    print(f"Sortie          : {out_root.resolve()}")
+    print(f"Failed          : {failed}")
+    print(f"Output          : {out_root.resolve()}")
 
 
 if __name__ == "__main__":

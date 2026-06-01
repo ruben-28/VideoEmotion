@@ -13,7 +13,7 @@ import yaml
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 # =============================================================================
-# CONFIG (valeurs par défaut, override possible via config.yaml)
+# CONFIG (default values, possible override via config.yaml)
 # =============================================================================
 
 OVERLAP_THRESHOLD = 0.30
@@ -114,7 +114,7 @@ def apply_config_overrides(cfg: Dict[str, Any]) -> None:
         )
     )
 
-    # filtres détection
+    # detection filters
     MIN_DET_SCORE = float(
         cfg_get(
             cfg, "face_detection", "filters", "min_det_score", default=MIN_DET_SCORE
@@ -400,13 +400,13 @@ def detect_faces_in_all_frames(
 
             already = sequence_already_processed(out_base)
 
-            # ✅ SKIP si déjà traité
-            # Mais si export_bboxes demandé et bboxes.json absent => on ne skip pas.
+            # ✅ SKIP if already processed
+            # But if export_bboxes is requested and bboxes.json is missing => we don't skip.
             if already and (not export_bboxes or os.path.exists(bboxes_path)):
-                print(f"[SKIP] Faces déjà détectées pour la séquence: {rel_path}")
+                print(f"[SKIP] Faces already detected for sequence: {rel_path}")
                 continue
 
-            # Reset tracks quand on change de séquence
+            # Reset tracks when changing sequence
             if current_sequence_key is None:
                 current_sequence_key = sequence_key
             elif sequence_key != current_sequence_key:
@@ -416,7 +416,7 @@ def detect_faces_in_all_frames(
 
             os.makedirs(out_base, exist_ok=True)
 
-            # ---- BBOX records pour cette séquence ----
+            # ---- BBOX records for this sequence ----
             bbox_by_frame: Dict[int, List[Dict[str, Any]]] = {}
 
             for filename in sorted(filenames):
@@ -429,8 +429,8 @@ def detect_faces_in_all_frames(
                     continue
 
                 frame_index = parse_frame_index(filename)
-                # si pas trouvé, on ignore juste l'export bbox pour cette frame
-                # mais on continue la détection/crops normalement
+                # if not found, we just ignore bbox export for this frame
+                # but we continue detection/crops normally
                 h_img, w_img = image.shape[:2]
 
                 rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -552,7 +552,7 @@ def detect_faces_in_all_frames(
                             best.hist = hist
 
                         track_id = best.id
-                        bbox_for_frame = best.bbox  # bbox possiblement lissée
+                        bbox_for_frame = best.bbox  # possibly smoothed bbox
                     else:
                         track_id = next_track_id
                         tracks.append(Track(track_id, new_box, hist))
@@ -607,12 +607,12 @@ def main():
         "--output-faces", default=None, help="Override output faces root."
     )
     parser.add_argument(
-        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+        "--project-root", default=None, help="Project root (default: auto)."
     )
     parser.add_argument(
         "--config",
         default=None,
-        help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).",
+        help="Path to config.yaml (default: <project-root>/config.yaml).",
     )
 
     # NEW: bbox export
@@ -658,7 +658,7 @@ def main():
     )
 
     if not extracted_frames_root.exists():
-        print(f"[ERREUR] Dossier frames introuvable: {extracted_frames_root}")
+        print(f"[ERROR] Frames folder not found: {extracted_frames_root}")
         return
 
     detected_faces_root.mkdir(parents=True, exist_ok=True)
@@ -674,5 +674,5 @@ def main():
 if __name__ == "__main__":
     main()
 
-# commande to run:
+# command to run:
 # mp_env\Scripts\python.exe src/detect_faces.py --export-bboxes

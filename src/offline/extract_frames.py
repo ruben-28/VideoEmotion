@@ -55,11 +55,11 @@ def extract_frames(video_path, output_folder, frame_rate=5):
     """
 
     frames_dir = os.path.join(output_folder, f"frames_fps{frame_rate}")
-    # SKIP si déjà traité
+    # SKIP if already processed
     if os.path.exists(frames_dir) and any(
         f.lower().endswith((".jpg", ".jpeg", ".png")) for f in os.listdir(frames_dir)
     ):
-        print(f"[SKIP] Frames déjà extraites: {frames_dir}")
+        print(f"[SKIP] Frames already extracted: {frames_dir}")
         return True
 
     os.makedirs(frames_dir, exist_ok=True)
@@ -117,7 +117,7 @@ def extract_all_new_videos(videos_dir, extracted_root, frame_rate=5):
 
         os.makedirs(video_output_dir, exist_ok=True)
 
-        print(f"[PROCESS] Extraction frames '{filename}' à {frame_rate} FPS...")
+        print(f"[PROCESS] Extracting frames '{filename}' at {frame_rate} FPS...")
         extract_frames(video_path, video_output_dir, frame_rate=frame_rate)
 
 
@@ -130,29 +130,29 @@ def main():
     parser.add_argument(
         "--video",
         default=None,
-        help="Vidéo spécifique (si fourni, on ne traite que celle-là).",
+        help="Specific video (if provided, only process this one).",
     )
     parser.add_argument(
         "--videos-dir",
         default=None,
-        help="Dossier contenant des vidéos (si --video non fourni).",
+        help="Folder containing videos (if --video not provided).",
     )
     parser.add_argument(
-        "--output", default=None, help="Dossier racine de sortie pour extracted_frames."
+        "--output", default=None, help="Output root folder for extracted_frames."
     )
     parser.add_argument(
         "--fps",
         type=int,
         default=None,
-        help="FPS extraction (override config si fourni).",
+        help="FPS extraction (override config if provided).",
     )
     parser.add_argument(
-        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+        "--project-root", default=None, help="Project root (default: auto)."
     )
     parser.add_argument(
         "--config",
         default=None,
-        help="Chemin vers config.yaml (défaut: <project-root>/config.yaml).",
+        help="Path to config.yaml (default: <project-root>/config.yaml).",
     )
 
     args = parser.parse_args()
@@ -169,7 +169,7 @@ def main():
     )
     cfg = load_config(config_path)
 
-    # Paths depuis config (si CLI absent)
+    # Paths from config (if CLI missing)
     cfg_videos_dir = cfg_get(cfg, "paths", "videos", default="data/videos")
     cfg_extracted_root = cfg_get(
         cfg, "paths", "extracted_frames", default="data/extracted_frames"
@@ -198,27 +198,27 @@ def main():
         else:
             video_path = video_path.resolve()
 
-        # petit fallback: si user met juste "x.mp4"
+        # small fallback: if user just put "x.mp4"
         if not video_path.exists():
             alt = (videos_dir / args.video).resolve()
             if alt.exists():
                 video_path = alt
 
         if not video_path.exists():
-            print(f"[ERREUR] Vidéo introuvable: {video_path}")
+            print(f"[ERROR] Video not found: {video_path}")
             return
 
         video_name = video_path.stem
         video_output_dir = extracted_root / video_name
         video_output_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"[PROCESS] Extraction frames '{video_path.name}' à {fps} FPS...")
+        print(f"[PROCESS] Extracting frames '{video_path.name}' at {fps} FPS...")
         extract_frames(str(video_path), str(video_output_dir), frame_rate=fps)
         return
 
-    # Mode dossier
+    # Folder mode
     if not videos_dir.exists():
-        print(f"[ERREUR] Dossier videos introuvable: {videos_dir}")
+        print(f"[ERROR] Videos folder not found: {videos_dir}")
         return
 
     extract_all_new_videos(str(videos_dir), str(extracted_root), frame_rate=fps)
@@ -227,6 +227,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-# Exemple:
+# Example:
 # python src/extract_frames.py --video data/videos/test_pipeline.mp4
 # python src/extract_frames.py --fps 10

@@ -171,26 +171,26 @@ def main():
         default=None,
         help="Override min detection score (mediapipe).",
     )
-    ap.add_argument("--bbox-thickness", type=int, default=3, help="Épaisseur bbox.")
-    ap.add_argument("--font-scale", type=float, default=0.9, help="Taille du texte.")
-    ap.add_argument("--text-thickness", type=int, default=2, help="Épaisseur du texte.")
+    ap.add_argument("--bbox-thickness", type=int, default=3, help="bbox thickness.")
+    ap.add_argument("--font-scale", type=float, default=0.9, help="Text size.")
+    ap.add_argument("--text-thickness", type=int, default=2, help="Text thickness.")
 
     # Save settings (Default: ON)
     ap.add_argument(
-        "--no-save-json", action="store_true", help="Désactiver la sauvegarde JSON."
+        "--no-save-json", action="store_true", help="Disable JSON save."
     )
     ap.add_argument(
         "--no-save-video",
         action="store_true",
-        help="Désactiver l'enregistrement vidéo.",
+        help="Disable video recording.",
     )
     ap.add_argument(
         "--no-visualize",
         action="store_true",
-        help="Désactiver les annotations sur la vidéo.",
+        help="Disable video annotations.",
     )
     ap.add_argument(
-        "--out-dir", default="output/realtime", help="Dossier de sortie (JSON/vidéo)."
+        "--out-dir", default="output/realtime", help="Output folder (JSON/video)."
     )
 
     args = ap.parse_args()
@@ -305,10 +305,10 @@ def main():
 
         json_path = session_dir / "realtime_emotions.json"
 
-        # ✅ vidéo "normale" (OpenCV mp4v) -> on la garde
+        # ✅ "normal" video (OpenCV mp4v) -> we keep it
         video_path = session_dir / "session.mp4"
 
-        # ✅ vidéo browser-friendly (H264) -> générée à la fin
+        # ✅ browser-friendly video (H264) -> generated at the end
         h264_path = session_dir / "session_h264.mp4"
 
     records = []
@@ -487,9 +487,9 @@ def main():
         # ✅ Ensure BOTH videos exist: session.mp4 + session_h264.mp4
         if do_save_video and video_path is not None:
             if video_path.exists():
-                print(f"[OK] Vidéo normale sauvegardée: {video_path}")
+                print(f"[OK] Normal video saved: {video_path}")
             else:
-                print("[WARN] session.mp4 introuvable (aucune frame écrite ?)")
+                print("[WARN] session.mp4 not found (no frame written?)")
 
             # Only transcode if we actually wrote frames
             if wrote_any_frame and video_path.exists() and h264_path is not None:

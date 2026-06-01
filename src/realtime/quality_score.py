@@ -23,7 +23,7 @@ def score_quality(summary: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     duration = float(summary.get("duree_estimee_sec", 0.0) or 0.0)
     uncertain = float(summary.get("taux_uncertain", 0.0) or 0.0)
 
-    # Règles A/B/C
+    # A/B/C rules
     is_A = (uncertain <= 5.0) and (duration >= 5.0) and (nb_frames >= 50)
     is_B = (uncertain <= 15.0) and (duration >= 2.0) and (nb_frames >= 20)
 
@@ -62,22 +62,22 @@ def iter_sessions(root: Path) -> List[Path]:
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Ajoute un quality_score (A/B/C) dans chaque summary.json de session."
+        description="Adds a quality_score (A/B/C) in each session's summary.json."
     )
     ap.add_argument(
         "--root",
         default=str(DEFAULT_ROOT),
-        help="Racine des sessions (default: output/realtime)",
+        help="Sessions root (default: output/realtime)",
     )
     ap.add_argument(
         "--summary-name",
         default=SUMMARY_NAME,
-        help="Nom du fichier summary (default: summary.json)",
+        help="Summary filename (default: summary.json)",
     )
     ap.add_argument(
         "--force",
         action="store_true",
-        help="Réécrire même si quality_score existe déjà",
+        help="Rewrite even if quality_score already exists",
     )
     args = ap.parse_args()
 
@@ -113,11 +113,11 @@ def main():
             errors += 1
             print(f"[ERROR] {session_dir.name}: {e}")
 
-    print("\n=== RÉCAP ===")
-    print(f"MAJ      : {updated}")
-    print(f"Skippés  : {skipped}")
-    print(f"Manquants: {missing}")
-    print(f"Erreurs  : {errors}")
+    print("\n=== RECAP ===")
+    print(f"UPDATED : {updated}")
+    print(f"Skipped : {skipped}")
+    print(f"Missing : {missing}")
+    print(f"Errors  : {errors}")
 
 
 if __name__ == "__main__":

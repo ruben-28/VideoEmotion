@@ -30,21 +30,21 @@ def aggregate_video_results(emotion_video_root: Path, output_json_path: Path) ->
 
     if not files:
         raise FileNotFoundError(
-            f"Aucun analyzed_emotions.json trouvé dans: {emotion_video_root}"
+            f"No analyzed_emotions.json found in: {emotion_video_root}"
         )
 
     for fp in files:
         try:
             data = json.loads(fp.read_text(encoding="utf-8"))
         except Exception as e:
-            print(f"[WARN] Impossible de lire {fp}: {e}")
+            print(f"[WARN] Unable to read {fp}: {e}")
             continue
 
         if not isinstance(data, dict):
-            print(f"[WARN] Format inattendu (pas dict) dans {fp}")
+            print(f"[WARN] Unexpected format (not a dict) in {fp}")
             continue
 
-        # Préfixe = chemin relatif du fichier pour rendre les clés uniques en cas de collision
+        # Prefix = relative path of the file to make keys unique in case of collision
         prefix = fp.relative_to(emotion_video_root).as_posix()
 
         for k, v in data.items():

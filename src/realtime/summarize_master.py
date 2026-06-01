@@ -47,8 +47,8 @@ def _safe_int(x: Any, default: int = 0) -> int:
 
 
 # =========================
-# Summary "par session"
-# (on s'appuie sur ton format realtime_analysis.py)
+# Summary "per session"
+# (we rely on your realtime_analysis.py format)
 # =========================
 UNKNOWN_LABELS = {"unknown", "none", ""}
 
@@ -97,7 +97,7 @@ def summarize_realtime_json(json_path: Path) -> Dict[str, Any]:
         if r.get("is_uncertain") is True or emo.lower() == "uncertain":
             uncertain_count += 1
 
-        # durée: t_rel_ms prioritaire, sinon time_ms
+        # duration: t_rel_ms priority, otherwise time_ms
         if "t_rel_ms" in r and r["t_rel_ms"] is not None:
             try:
                 times_sec.append(float(r["t_rel_ms"]) / 1000.0)
@@ -112,7 +112,7 @@ def summarize_realtime_json(json_path: Path) -> Dict[str, Any]:
     nb = len(emotions)
     counts = Counter(emotions)
 
-    # dominante: ignorer unknown + Uncertain si possible
+    # dominant: ignore unknown + Uncertain if possible
     counts_for_dom = Counter(
         {
             k: v
@@ -178,7 +178,7 @@ def _get_emotion_percent(summary: Dict[str, Any], emotion: str) -> float:
     if emotion in percs:
         return _safe_float(percs[emotion], 0.0)
 
-    # fallback casse
+    # case fallback
     for k, v in percs.items():
         if str(k).lower() == emotion.lower():
             return _safe_float(v, 0.0)
@@ -315,7 +315,7 @@ def aggregate_master(
     master["root"] = str(root)
     master["summary_name"] = summary_name
 
-    # ✅ Ajouts demandés
+    # ✅ Requested additions
     master["quality_breakdown"] = _quality_breakdown(summaries_ok)
     master["rankings"] = _build_rankings(
         summaries_ok, emotion_focus=emotion_focus, top_k=top_k
@@ -325,44 +325,44 @@ def aggregate_master(
 
 
 # =========================
-# Main (tout-en-un)
+# Main (all-in-one)
 # =========================
 def main():
     ap = argparse.ArgumentParser(
-        description="Tout-en-un: génère les summary.json manquants puis summary_master.json (+rankings)"
+        description="All-in-one: generates missing summary.json then summary_master.json (+rankings)"
     )
     ap.add_argument(
         "--root",
         default=str(DEFAULT_ROOT),
-        help="Dossier racine sessions (default: output/realtime)",
+        help="Root sessions folder (default: output/realtime)",
     )
     ap.add_argument(
         "--session-json",
         default=DEFAULT_SESSION_JSON,
-        help="Nom du JSON session (default: realtime_emotions.json)",
+        help="Session JSON name (default: realtime_emotions.json)",
     )
     ap.add_argument(
         "--summary-name",
         default=DEFAULT_SUMMARY_NAME,
-        help="Nom du summary (default: summary.json)",
+        help="Summary name (default: summary.json)",
     )
     ap.add_argument(
         "--master-name",
         default=DEFAULT_MASTER_NAME,
-        help="Nom du master (default: summary_master.json)",
+        help="Master name (default: summary_master.json)",
     )
     ap.add_argument(
         "--force",
         action="store_true",
-        help="Régénérer les summary.json même s'ils existent",
+        help="Regenerate summary.json even if they exist",
     )
     ap.add_argument(
         "--emotion-focus",
         default="Happiness",
-        help="Emotion utilisée pour le ranking top_by_<emotion>_percent",
+        help="Emotion used for top_by_<emotion>_percent ranking",
     )
     ap.add_argument(
-        "--top-k", type=int, default=5, help="Nombre d'items par ranking (default: 5)"
+        "--top-k", type=int, default=5, help="Number of items per ranking (default: 5)"
     )
     args = ap.parse_args()
 
@@ -388,16 +388,16 @@ def main():
             errors += 1
 
     print("=== SUMMARY PER SESSION ===")
-    print(f"Créés/MAJ : {created}")
-    print(f"Skippés   : {skipped}")
-    print(f"Sans JSON : {no_json}")
-    print(f"Erreurs   : {errors}")
+    print(f"Created/UPDATED : {created}")
+    print(f"Skipped         : {skipped}")
+    print(f"No JSON         : {no_json}")
+    print(f"Errors          : {errors}")
 
     # 2) Master (+ rankings)
     master = aggregate_master(root, args.summary_name, args.emotion_focus, args.top_k)
     out_path = root / args.master_name
     _write_json(out_path, master)
-    print(f"\n[OK] master écrit: {out_path}")
+    print(f"\n[OK] master written: {out_path}")
 
 
 if __name__ == "__main__":

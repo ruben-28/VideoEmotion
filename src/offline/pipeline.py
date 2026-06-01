@@ -52,7 +52,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
         return data if isinstance(data, dict) else {}
     except Exception as e:
         eprint(
-            f"[WARN] Impossible de lire config: {config_path} ({type(e).__name__}: {e})"
+            f"[WARN] Impossible to read config: {config_path} ({type(e).__name__}: {e})"
         )
         return {}
 
@@ -202,7 +202,7 @@ def run_visualize_for_video(
         else resolve_source_video(videos_dir, video_name)
     )
     if src_video is None or not src_video.exists():
-        eprint(f"[WARN] Source video introuvable pour visualisation: {video_name}")
+        eprint(f"[WARN] Source video not found for visualization: {video_name}")
         return
 
     visualizations_root.mkdir(parents=True, exist_ok=True)
@@ -465,71 +465,71 @@ def main():
         description="VideoEmotion - Offline pipeline runner (extract -> detect -> analyze -> report -> visualize)"
     )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--video", help="Chemin vers la vidéo (ex: data/videos/x.mp4)")
+    group.add_argument("--video", help="Path to video (e.g., data/videos/x.mp4)")
     group.add_argument(
         "--all",
         action="store_true",
-        help="Traiter TOUTES les vidéos trouvées dans data/videos (config).",
+        help="Process ALL videos found in data/videos (config).",
     )
 
     parser.add_argument(
         "--fps",
         type=int,
         default=None,
-        help="FPS extraction (override config si fourni)",
+        help="Extraction FPS (override config if provided)",
     )
     parser.add_argument(
         "--py-detect",
         default=None,
-        help="Chemin vers python.exe du venv mp_env (mediapipe).",
+        help="Path to python.exe of mp_env venv (mediapipe).",
     )
     parser.add_argument(
-        "--project-root", default=None, help="Racine du projet (défaut: auto)."
+        "--project-root", default=None, help="Project root (default: auto)."
     )
     parser.add_argument(
         "--config",
         default=None,
-        help="Chemin config.yaml (défaut: <project-root>/config.yaml).",
+        help="Path to config.yaml (default: <project-root>/config.yaml).",
     )
 
     parser.add_argument(
-        "--no-extract", action="store_true", help="Skip étape 1 (extract_frames)."
+        "--no-extract", action="store_true", help="Skip step 1 (extract_frames)."
     )
     parser.add_argument(
-        "--no-detect", action="store_true", help="Skip étape 2 (detect_faces)."
+        "--no-detect", action="store_true", help="Skip step 2 (detect_faces)."
     )
     parser.add_argument(
-        "--no-analyze", action="store_true", help="Skip étape 3 (analyze_emotion)."
+        "--no-analyze", action="store_true", help="Skip step 3 (analyze_emotion)."
     )
     parser.add_argument(
         "--no-summary",
         action="store_true",
-        help="Skip étape 4 (emotion_summary_report).",
+        help="Skip step 4 (emotion_summary_report).",
     )
     parser.add_argument(
         "--summary-only",
         action="store_true",
-        help="Ne faire QUE le summary/report (étape 4).",
+        help="ONLY do summary/report (step 4).",
     )
 
     parser.add_argument(
-        "--no-visualize", action="store_true", help="Skip étape 5 (visualize_results)."
+        "--no-visualize", action="store_true", help="Skip step 5 (visualize_results)."
     )
     parser.add_argument(
         "--visualize-only",
         action="store_true",
-        help="Ne faire QUE l'agrégation + visualisation (étape 5).",
+        help="ONLY do aggregation + visualization (step 5).",
     )
 
     parser.add_argument(
         "--force-visualize",
         action="store_true",
-        help="Recrée la vidéo annotée même si elle existe déjà.",
+        help="Recreate annotated video even if it already exists.",
     )
     parser.add_argument(
         "--export-bboxes",
         action="store_true",
-        help="Demande à detect_faces d'exporter bboxes.json.",
+        help="Ask detect_faces to export bboxes.json.",
     )
 
     args = parser.parse_args()
